@@ -169,7 +169,7 @@ test.describe('web product flows', () => {
     expect(cookies.find((c) => c.name === 'faultline_uid')?.value).toBe(id)
     await expect.poll(() => seen.length).toBeGreaterThan(0)
     expect(new Set(seen)).toEqual(new Set([id]))
-    await expect(page.locator('[data-slot=sidebar]')).toContainText(/No conversations yet|History unavailable/)
+    await expect(page.locator('[data-slot=sidebar]')).toContainText(/No conversations yet/)
     await openUserMenu(page)
     await expect(page.getByRole('menu')).toContainText(id!)
     await shot(page, info, 'F8_identity_menu')
@@ -285,14 +285,12 @@ test.describe('web product flows', () => {
 
     test('F4b web-persisted-score: the persisted transcript shows the grader verdict (score card)', async ({ page }) => {
       test.skip(!liveUrl || !liveUserId, 'F3 did not produce a conversation')
-      // Known gap (anthropic-10 review, 2026-09-12): the persisted projection drops the evaluation,
-      // so the score card is missing after reload. Expected to FAIL until fixed; Playwright will
-      // flag this test as "passed unexpectedly" once it is, and this marker must then be removed.
-      test.fail(true, 'persisted transcript drops the evaluation (known product gap)')
+      // Fixed in faultline-web v20 (2026-09-12 20:14 EDT): the persisted transcript shows the run's
+      // grade, or a "Not graded" callout (data-slot="not-graded") when it could not be evaluated.
       await adoptIdentity(page)
       await page.goto(liveUrl!)
       await expect(page.locator('header').getByText(/sqlite/)).toBeVisible({ timeout: 60_000 })
-      await expect(page.locator('main')).toContainText(/verified_before_rewrite|Passed|Failed|not graded/i, { timeout: 20_000 })
+      await expect(page.locator('main')).toContainText(/verified_before_rewrite|Passed|Failed|Not graded/i, { timeout: 20_000 })
     })
   })
 })
