@@ -1,0 +1,298 @@
+/**
+ * User product flows for apps/web — one test per sub-feature in
+ * .claude/skills/verify-faultline/features/web-ui.md. Keep the ids (F1…F11) and the feature ids in
+ * the test titles in sync with that file: the verification runner reports `flows.<id>` from them.
+ *
+ * Every test starts from a fresh browser context (fresh identity, fresh theme, fresh layout) and
+ * saves a full-page screenshot as an attachment named `screen`.
+ */
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { expect, test, type Page, type TestInfo } from '@playwright/test'
+
+const SCREEN_DIR = process.env.PW_SCREEN_DIR ?? 'e2e-results/screens'
+const OUTPUTS_DIR = process.env.PW_OUTPUTS_DIR ?? 'e2e-results/outputs'
+
+function writeOutput(name: string, value: unknown) {
+  mkdirSync(OUTPUTS_DIR, { recursive: true })
+  writeFileSync(join(OUTPUTS_DIR, name), JSON.stringify(value, null, 2))
+}
+const LIVE = process.env.FAULTLINE_LIVE === '1'
+
+async function shot(page: Page, info: TestInfo, name: string) {
+  const path = `${SCREEN_DIR}/${name}.png`
+  await page.screenshot({ path, fullPage: true })
+  await info.attach('screen', { path, contentType: 'image/png' })
+}
+
+async function gotoHome(page: Page) {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('What should the agent survive today?')
+  // skeleton rows render first; wait for a real scenario row (it has a Run button)
+  await expect(page.locator('table tbody tr').filter({ has: page.getByRole('button', { name: /^Run$|Starting/ }) }).first()).toBeVisible({ timeout: 60_000 })
+}
+
+const promptBox = (page: Page) => page.getByRole('textbox', { name: 'Prompt' })
+
+/** Open the bottom-left user menu; the trigger also owns a tooltip, so give the popup a moment and retry once. */
+async function openUserMenu(page: Page) {
+  const trigger = page.locator('[data-slot=sidebar-footer] button').first()
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await trigger.click()
+    try {
+      await expect(page.getByRole('menu')).toBeVisible({ timeout: 4_000 })
+      return
+    } catch {
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(300)
+    }
+  }
+  await expect(page.getByRole('menu')).toBeVisible()
+}
+const rowFor = (page: Page, scenarioId: string) =>
+  page.locator('table tbody tr').filter({ has: page.locator(`text=/^${scenarioId}$/`) })
+
+test.describe('web product flows', () => {
+  test('F1 web-landing: bullets, centered composer, six-column scenario table, no health card', async ({ page }, info) => {
+    await gotoHome(page)
+    await expect(page.locator('ul', { hasText: /Claude agent/ }).first().getByRole('listitem')).toHaveCount(5)
+    await expect(promptBox(page)).toBeVisible()
+    for (const h of ['Scenario', 'What happens', 'Max turns', 'Failure injected', 'Live run', 'Replay']) {
+      await expect(page.locator('table thead')).toContainText(h)
+    }
+    await expect.poll(async () => await page.locator('table tbody tr').filter({ has: page.getByRole('button', { name: /^Run$|Starting/ }) }).count()).toBeGreaterThanOrEqual(4)
+    for (const id of ['lost-ack', 'locked-file', 'missing-config', 'gauntlet']) {
+      const row = rowFor(page, id)
+      await expect(row.getByRole('button', { name: /^Run$|Starting/ })).toBeVisible()
+      await expect(row.getByRole('button', { name: /Replay/ })).toBeVisible()
+    }
+    await expect(page.getByText('Harness reachable')).toHaveCount(0)
+    await shot(page, info, 'F1_landing')
+  })
+
+  test('F2 web-composer: slash menu filters, Enter picks and fills the task prompt', async ({ page }, info) => {
+    await gotoHome(page)
+    const box = promptBox(page)
+    await box.click()
+    await box.pressSequentially('/lost')
+    const option = page.getByRole('option', { name: /lost-ack/ })
+    await expect(option).toBeVisible()
+    await shot(page, info, 'F2_slash_menu')
+    await box.press('Enter')
+    await expect(box).toHaveValue(/^Prepare release 0\.2\.0/)
+    await expect(page.getByRole('option')).toHaveCount(0)
+    await expect(page.getByText(/max 20 steps · enter to run/)).toBeVisible()
+  })
+
+  test('F5 web-replay: lost-ack replay plays in the browser with a scrubber and ends graded 100, story says recovered', async ({ page }, info) => {
+    await gotoHome(page)
+    await rowFor(page, 'lost-ack').getByRole('button', { name: /Replay/ }).click()
+    await expect(page).toHaveURL(/\/replay\/lost-ack$/)
+    await expect(page.locator('header')).toContainText('recorded replay')
+    const controls = page.getByLabel('Replay controls')
+    await expect(controls).toBeVisible()
+    // Base UI slider: the label sits on the root, the thumb is a range input
+    await expect(controls.locator('[data-slot=slider]')).toBeVisible()
+    await expect(controls.locator('input[type=range]')).toHaveCount(1)
+    await expect(controls.getByRole('button', { name: /Pause replay|Play replay/ })).toBeVisible()
+    // play to the end: the transport becomes "Restart replay" and the story lands on the verdict
+    await expect(controls.getByRole('button', { name: 'Restart replay' })).toBeVisible({ timeout: 90_000 })
+    const story = page.getByRole('region', { name: 'What happened' })
+    await expect(story).toContainText(/Verdict: 100\/100/i)
+    await expect(story).toContainText(/recovered/)
+    await expect(story).toContainText(/Score 100\/100/)
+    await expect(page.locator('main')).toContainText(/verified_before_rewrite/)
+    await shot(page, info, 'F5_replay_end')
+  })
+
+  test('F6 web-replay-story: the story bar explains each checkpoint in plain English with prev/next, and names the fault', async ({ page }, info) => {
+    await page.goto('/replay/lost-ack')
+    const controls = page.getByLabel('Replay controls')
+    await expect(controls.getByRole('button', { name: 'Restart replay' })).toBeVisible({ timeout: 90_000 })
+    const story = page.getByRole('region', { name: 'What happened' })
+    await expect(story).toContainText(/Verdict/i)
+    // walk backwards through the checkpoints until the one that reports the injected fault
+    let found = false
+    for (let i = 0; i < 14 && !found; i++) {
+      await story.getByRole('button', { name: 'Previous step' }).click()
+      const text = (await story.textContent()) ?? ''
+      if (/simulated: lost ack/i.test(text) || (/\bfault\b/i.test(text) && /CHANGELOG\.md|acknowledg/i.test(text))) found = true
+    }
+    expect(found).toBe(true)
+    await shot(page, info, 'F6_story_fault_checkpoint')
+    await story.getByRole('button', { name: 'Next step' }).click()
+    await expect(story).not.toContainText(/^$/)
+  })
+
+  test('F7 web-workspace: resizable column, collapse toggle, virtualized logs', async ({ page }, info) => {
+    await page.goto('/replay/lost-ack')
+    const handle = page.locator('[data-slot=resizable-handle]')
+    await expect(handle).toBeVisible()
+    const workspace = page.locator('[data-slot=resizable-panel]#workspace')
+    const before = (await workspace.boundingBox())!.width
+    const box = (await handle.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + 300)
+    await page.mouse.down()
+    await page.mouse.move(box.x - 160, box.y + 300, { steps: 12 })
+    await page.mouse.up()
+    const after = (await workspace.boundingBox())!.width
+    expect(after).toBeGreaterThan(before + 80)
+    const saved = await page.evaluate(() =>
+      Object.keys(localStorage).some((k) => k.includes('faultline.run-layout')),
+    )
+    expect(saved).toBe(true)
+    const toggle = page.locator('header').getByRole('button', { name: 'Workspace' })
+    await toggle.click()
+    await expect.poll(async () => (await workspace.boundingBox())?.width ?? 0).toBeLessThan(2)
+    await toggle.click()
+    await expect.poll(async () => (await workspace.boundingBox())?.width ?? 0).toBeGreaterThan(200)
+    await page.getByRole('tab', { name: 'Logs' }).click()
+    const log = page.getByRole('log')
+    await expect(log).toBeVisible()
+    await expect.poll(async () => await log.locator('[data-index]').count()).toBeGreaterThan(0)
+    const rendered = await log.locator('[data-index]').count()
+    expect(rendered).toBeLessThanOrEqual(60)
+    await shot(page, info, 'F7_workspace_logs')
+  })
+
+  test('F8 web-identity: minted id, cookie mirror, header on every request, fresh identity sees no history', async ({ page, context }, info) => {
+    const seen: string[] = []
+    page.on('request', (r) => {
+      const h = r.headers()['x-faultline-user']
+      if (h && /\/(conversations|me|runs)/.test(r.url())) seen.push(h)
+    })
+    await gotoHome(page)
+    const id = await page.evaluate(() => localStorage.getItem('faultline.user_id'))
+    expect(id).toMatch(/^u_[0-9a-f-]{36}$/)
+    const cookies = await context.cookies()
+    expect(cookies.find((c) => c.name === 'faultline_uid')?.value).toBe(id)
+    await expect.poll(() => seen.length).toBeGreaterThan(0)
+    expect(new Set(seen)).toEqual(new Set([id]))
+    await expect(page.locator('[data-slot=sidebar]')).toContainText(/No conversations yet|History unavailable/)
+    await openUserMenu(page)
+    await expect(page.getByRole('menu')).toContainText(id!)
+    await shot(page, info, 'F8_identity_menu')
+  })
+
+  test('F9 web-theme: light · dark · system from the user menu, persisted, URL override, no dark class in light', async ({ page }, info) => {
+    await gotoHome(page)
+    await openUserMenu(page)
+    // The controls must be reachable by assistive technology: a menu *label* is aria-hidden in
+    // Base UI, so interactive controls placed inside DropdownMenuLabel vanish from the a11y tree.
+    const cssGroup = page.locator('[role=radiogroup][aria-label="Theme"]')
+    await expect(cssGroup).toBeVisible()
+    const hiddenAncestor = await cssGroup.evaluate((el) => !!el.parentElement?.closest('[aria-hidden="true"]'))
+    expect(hiddenAncestor, 'Theme radiogroup is inside an aria-hidden ancestor (DropdownMenuLabel); render it outside the label').toBe(false)
+    const group = page.getByRole('radiogroup', { name: 'Theme' })
+    await expect(group).toBeVisible()
+    await group.getByRole('radio', { name: 'Light theme' }).click()
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
+    expect(await page.evaluate(() => localStorage.getItem('faultline.theme'))).toBe('light')
+    await shot(page, info, 'F9_theme_light')
+    await page.reload()
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
+    await page.goto('/?theme=dark')
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    expect(await page.evaluate(() => localStorage.getItem('faultline.theme'))).toBe('dark')
+    await openUserMenu(page)
+    await page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'System theme' }).click()
+    expect(await page.evaluate(() => localStorage.getItem('faultline.theme'))).toBe('system')
+  })
+
+  test('F10 web-failure-modes: unknown run shows a clear error, never a provisioning spinner', async ({ page }, info) => {
+    await page.goto('/runs/r_doesnotexist')
+    await expect(page.getByText(/Could not load this run/)).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText(/Provisioning the sandbox/)).toHaveCount(0)
+    await shot(page, info, 'F10_unknown_run')
+  })
+
+  test('F11 web-sidebar: collapses to icons and back', async ({ page }, info) => {
+    await gotoHome(page)
+    const sidebar = page.locator('[data-slot=sidebar]').first()
+    await expect(sidebar).toHaveAttribute('data-state', 'expanded')
+    await page.locator('[data-slot=sidebar-trigger]').click()
+    await expect(sidebar).toHaveAttribute('data-state', 'collapsed')
+    await shot(page, info, 'F11_sidebar_collapsed')
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+b' : 'Control+b')
+    await expect(sidebar).toHaveAttribute('data-state', 'expanded')
+  })
+
+  test.describe('live conversation (FAULTLINE_LIVE=1)', () => {
+    test.describe.configure({ mode: 'serial' })
+    test.skip(!LIVE, 'set FAULTLINE_LIVE=1 (verify_web.py --live) to spend one Haiku episode')
+
+    let liveUrl: string | null = null
+    let runId: string | null = null
+    let conversationId: string | null = null
+    let liveUserId: string | null = null
+
+    /** Each test gets a fresh browser context (fresh identity); later steps must act as the user who started the run. */
+    async function adoptIdentity(page: Page) {
+      await page.addInitScript((id) => {
+        try {
+          localStorage.setItem('faultline.user_id', id)
+        } catch {
+          /* ignore */
+        }
+      }, liveUserId!)
+    }
+
+    test('F3 web-live-run: Run from the table → conversation → live SSE → finished → persisted (sqlite) chip', async ({ page }, info) => {
+      test.setTimeout(6 * 60_000)
+      await gotoHome(page)
+      await rowFor(page, 'lost-ack').getByRole('button', { name: /^Run$/ }).click()
+      await expect(page).toHaveURL(/\/conversations\/c_[a-z0-9]+\?run=r_[a-z0-9]+/, { timeout: 60_000 })
+      conversationId = new URL(page.url()).pathname.split('/').pop()!
+      runId = new URL(page.url()).searchParams.get('run')!
+      liveUrl = page.url()
+      writeOutput('live.json', { run_id: runId, conversation_id: conversationId, started_at: new Date().toISOString(), url: liveUrl })
+      await expect(page.locator('[data-slot=sidebar]')).toContainText(/Release 0\.2\.0/)
+      await expect(page.locator('header')).toContainText(/live · (sse|poll)/, { timeout: 60_000 })
+      await shot(page, info, 'F3_live_streaming')
+      // the status badge's own text is exactly the run status (header textContent concatenates nodes without spaces)
+      const statusBadge = page.locator('header').getByText(/^(ok|unevaluated|interrupted|truncated|error)$/)
+      await expect(statusBadge).toBeVisible({ timeout: 4 * 60_000 })
+      const finalStatus = (await statusBadge.textContent())?.trim()
+      await expect(page.locator('header').getByText(/sqlite/)).toBeVisible({ timeout: 60_000 })
+      await shot(page, info, 'F3_finished_sqlite')
+      const userId = await page.evaluate(() => localStorage.getItem('faultline.user_id'))
+      liveUserId = userId
+      writeOutput('live.json', { run_id: runId, conversation_id: conversationId, user_id: userId, final_status: finalStatus, url: liveUrl, finished_at: new Date().toISOString() })
+    })
+
+    test('F4 web-persisted: hard reload restores the transcript from GET /conversations/{id}; other identities get 404', async ({ page, request }, info) => {
+      test.skip(!liveUrl || !liveUserId, 'F3 did not produce a conversation')
+      await adoptIdentity(page)
+      await page.goto(liveUrl!)
+      await expect(page.locator('header').getByText(/sqlite/)).toBeVisible({ timeout: 60_000 })
+      await expect(page.getByText(/Prepare release 0\.2\.0/).first()).toBeVisible()
+      await expect(page.getByText(/Step 1 of/).first()).toBeVisible()
+      await expect(page.getByText(/another run in this conversation/)).toBeVisible()
+      await shot(page, info, 'F4_persisted_after_reload')
+      const userId = await page.evaluate(() => localStorage.getItem('faultline.user_id'))
+      const cfg = (await (await request.get('/config.json')).json()) as { harnessUrl: string }
+      const mine = await request.get(`${cfg.harnessUrl}/conversations/${conversationId}`, { headers: { 'X-Faultline-User': userId! } })
+      expect(mine.ok()).toBe(true)
+      const body = await mine.json()
+      writeOutput('conversation.json', body)
+      writeOutput('live.json', { run_id: runId, conversation_id: conversationId, user_id: userId, harness_url: cfg.harnessUrl, url: liveUrl, verified_at: new Date().toISOString() })
+      await info.attach('conversation.json', { body: JSON.stringify(body, null, 2), contentType: 'application/json' })
+      expect(Array.isArray(body.messages) && body.messages.length).toBeTruthy()
+      const other = await request.get(`${cfg.harnessUrl}/conversations/${conversationId}`, { headers: { 'X-Faultline-User': 'u_22222222-2222-4222-8222-222222222222' } })
+      expect(other.status()).toBe(404)
+    })
+
+    test('F4b web-persisted-score: the persisted transcript shows the grader verdict (score card)', async ({ page }) => {
+      test.skip(!liveUrl || !liveUserId, 'F3 did not produce a conversation')
+      // Known gap (anthropic-10 review, 2026-09-12): the persisted projection drops the evaluation,
+      // so the score card is missing after reload. Expected to FAIL until fixed; Playwright will
+      // flag this test as "passed unexpectedly" once it is, and this marker must then be removed.
+      test.fail(true, 'persisted transcript drops the evaluation (known product gap)')
+      await adoptIdentity(page)
+      await page.goto(liveUrl!)
+      await expect(page.locator('header').getByText(/sqlite/)).toBeVisible({ timeout: 60_000 })
+      await expect(page.locator('main')).toContainText(/verified_before_rewrite|Passed|Failed|not graded/i, { timeout: 20_000 })
+    })
+  })
+})

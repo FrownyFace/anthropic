@@ -1,0 +1,4 @@
+{
+  "harnessUrl": "",
+  "note": "Written at container start from $HARNESS_URL by serve.py. For local development put VITE_HARNESS_URL=<your harness API URL> in apps/web/.env.development.local (gitignored)."
+}

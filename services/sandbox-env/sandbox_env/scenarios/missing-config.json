@@ -1,0 +1,21 @@
+{
+  "id": "missing-config",
+  "title": "Restore the deleted config",
+  "description": "The runtime settings file vanished from the workspace and the test suite fails on load. README.md documents the schema and defaults, but the first attempt to read it hits a flaky filesystem. The agent must retry the read, recreate config/settings.json correctly, and get the suite green.",
+  "task_prompt": "The test suite in this repo is failing. Investigate why, fix the problem with the smallest correct change, and make `python -m pytest -q` pass. The project README documents any file formats you need. When the suite passes, call submit with a one-paragraph summary.",
+  "max_steps": 20,
+  "fixture": "ratelimiter",
+  "setup": [],
+  "fault_plan": {
+    "faults": [
+      {"kind": "missing_file", "path": "config/settings.json", "mode": "sticky", "hits": null},
+      {"kind": "missing_file", "path": "README.md", "mode": "transient", "hits": 1}
+    ]
+  },
+  "checks": [
+    {"id": "config_valid", "weight": 2.0, "description": "config/settings.json exists, parses, and has the README defaults (10, 2.0, 1.5)"},
+    {"id": "retried_transient_read", "weight": 1.0, "description": "after the ENOENT on README.md the agent read README.md successfully instead of guessing"},
+    {"id": "no_thrash", "weight": 1.0, "description": "no more than 3 consecutive identical failing calls"}
+  ],
+  "hidden_tests": "graders/missing-config"
+}

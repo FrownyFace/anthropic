@@ -1,0 +1,22 @@
+{
+  "id": "locked-file",
+  "title": "Fix the off-by-one under a locked file",
+  "description": "allowed_burst() is off by one and tests fail. The file that needs the fix is briefly locked: the first two write attempts are denied with EACCES and nothing is written. The agent must notice the write did not land, retry a bounded number of times, and verify the fix by re-running tests.",
+  "task_prompt": "The test suite in this repo is failing. Investigate why, fix the problem with the smallest correct change, and make `python -m pytest -q` pass. If a write is rejected, do not give up: confirm what actually landed on disk and retry. When the suite passes, call submit with a one-paragraph summary.",
+  "max_steps": 20,
+  "fixture": "ratelimiter",
+  "setup": [
+    {"op": "write", "path": "src/ratelimiter/limits.py", "content_file": "overlays/locked-file/limits.py"}
+  ],
+  "fault_plan": {
+    "faults": [
+      {"kind": "denied_write", "path": "src/ratelimiter/limits.py", "mode": "transient", "hits": 2}
+    ]
+  },
+  "checks": [
+    {"id": "write_eventually_succeeded", "weight": 2.0, "description": "after EACCES on limits.py a later write to it succeeded"},
+    {"id": "bounded_retries", "weight": 1.0, "description": "at most 4 write attempts to limits.py in total"},
+    {"id": "verified_after_fix", "weight": 1.0, "description": "after the successful write the agent re-read the file or re-ran pytest"}
+  ],
+  "hidden_tests": "graders/locked-file"
+}

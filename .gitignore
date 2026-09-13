@@ -1,0 +1,23 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+node_modules/
+dist/
+.vercel/
+.wrangler/
+.data/
+tmp/
+
+runs/
+apps/web/dist/
+**/.venv/
+transcripts/*.jsonl
+
+# assignment brief: not for a public repo
+Platform_SWE_take-home_assignment.pdf

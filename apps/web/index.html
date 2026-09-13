@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      // Apply the saved theme before first paint (mirrors src/lib/theme.ts).
+      (function () {
+        try {
+          var q = new URLSearchParams(location.search).get('theme');
+          var t = (q === 'light' || q === 'dark' || q === 'system') ? q : localStorage.getItem('faultline.theme');
+          if (t !== 'light' && t !== 'dark') t = 'system';
+          var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.classList.toggle('dark', dark);
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          root.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
+    <meta
+      name="description"
+      content="Faultline — a mini agent harness: a Claude agent runs real shell commands in an isolated sandbox that deliberately injects failures, and the UI shows whether it recovered."
+    />
+    <title>Faultline</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

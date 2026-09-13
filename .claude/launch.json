@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-dev",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "cd apps/web && source ~/.nvm/nvm.sh && nvm use 22 >/dev/null && pnpm exec vite --port 5174 --strictPort --host 127.0.0.1"],
+      "port": 5174
+    }
+  ]
+}
