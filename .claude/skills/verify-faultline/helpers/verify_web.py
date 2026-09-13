@@ -44,7 +44,7 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[4]
 WEB = REPO / "apps" / "web"
 DEFAULT_BASE_URL = "https://appliedlabsai-local--faultline-web-site.us-east.modal.direct"
-FLOW_IDS = ["F1", "F2", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F3", "F4", "F4b"]
+FLOW_IDS = ["F1", "F2", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "F3", "F4", "F4b"]
 
 
 def now() -> str:
@@ -121,6 +121,24 @@ def dev_harness_url() -> tuple[str, str]:
             if m:
                 return m.group(1).rstrip("/"), str(env_file.relative_to(REPO))
     return "", "(none: set VITE_HARNESS_URL in apps/web/.env.development.local or HARNESS_URL)"
+
+
+def demo_provenance(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """A bundled replay must carry the provenance layer (docs/error-taxonomy.md), or the replay path —
+    the only path a reviewer without a harness ever sees — silently ages out of the taxonomy:
+    every tool.result has data.outcome, every error result has data.error_class, every fault.fired
+    has data.origin, and at least one llm.call exists (so the token counter moves)."""
+    results = [e for e in events if e.get("type") == "tool.result"]
+    errors = [e for e in results if (e.get("data") or {}).get("is_error")]
+    fired = [e for e in events if e.get("type") == "fault.fired"]
+    llm = [e for e in events if e.get("type") == "llm.call"]
+    no_outcome = sum(1 for e in results if "outcome" not in (e.get("data") or {}))
+    no_class = sum(1 for e in errors if not (e.get("data") or {}).get("error_class"))
+    no_origin = sum(1 for e in fired if "origin" not in (e.get("data") or {}))
+    ok = bool(results) and no_outcome == 0 and no_class == 0 and no_origin == 0 and bool(llm)
+    detail = (f"tool.result {len(results)} (without outcome {no_outcome}), errors {len(errors)} (without error_class {no_class}), "
+              f"fault.fired {len(fired)} (without origin {no_origin}), llm.call {len(llm)}")
+    return {"ok": ok, "detail": detail}
 
 
 def local_bundle() -> str | None:
@@ -207,9 +225,21 @@ def doctor(ev: Evidence, base: str) -> None:
                 ok = bool(events) and contiguous and evaluated and rec.get("scenario_id") == d
                 detail = f"{len(events)} events, contiguous={contiguous}, score={(rec.get('evaluation') or {}).get('score')}"
                 ev.write_output(f"demo_{d}.summary.json", {"run_id": rec.get("run_id"), "status": rec.get("status"), "events": len(events), "score": (rec.get("evaluation") or {}).get("score")})
+                prov = demo_provenance(events)
+                ev.check("http", f"demo_{d}_provenance", prov["ok"], prov["detail"])
             except Exception as e:
                 ok, detail = False, f"unparseable: {e}"
         ev.check("http", f"demo_{d}", ok, detail)
+    # every failure case the harness offers must be replayable in the browser (bundled demo per scenario)
+    harness = ev.meta.get("harness_url") or ""
+    if harness:
+        status, _, body = http(ev, "GET", f"{harness}/scenarios")
+        try:
+            scen = [s.get("id") for s in json.loads(body).get("scenarios", [])]
+        except Exception:
+            scen = []
+        missing = [x for x in scen if x and x not in ids]
+        ev.check("http", "demo_per_scenario", status == 200 and bool(scen) and not missing, f"scenarios={scen} without a replay={missing}")
 
 
 # ----------------------------------------------------------------------------- flows

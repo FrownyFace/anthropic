@@ -28,7 +28,7 @@ async function shot(page: Page, info: TestInfo, name: string) {
 
 async function gotoHome(page: Page) {
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('What should the agent survive today?')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('An agent harness where the environment fights back')
   // skeleton rows render first; wait for a real scenario row (it has a Run button)
   await expect(page.locator('table tbody tr').filter({ has: page.getByRole('button', { name: /^Run$|Starting/ }) }).first()).toBeVisible({ timeout: 60_000 })
 }
@@ -54,13 +54,17 @@ const rowFor = (page: Page, scenarioId: string) =>
   page.locator('table tbody tr').filter({ has: page.locator(`text=/^${scenarioId}$/`) })
 
 test.describe('web product flows', () => {
-  test('F1 web-landing: bullets, centered composer, six-column scenario table, no health card', async ({ page }, info) => {
+  test('F1 web-landing: headline, what-goes-wrong list, try-it steps, centered composer, six-column scenario table, no health card', async ({ page }, info) => {
     await gotoHome(page)
-    await expect(page.locator('ul', { hasText: /Claude agent/ }).first().getByRole('listitem')).toHaveCount(5)
+    await expect(page.getByRole('list', { name: 'What goes wrong' }).getByRole('listitem')).toHaveCount(4)
+    await expect(page.getByRole('list', { name: 'Try it in 60 seconds' }).getByRole('listitem')).toHaveCount(4)
     await expect(promptBox(page)).toBeVisible()
-    for (const h of ['Scenario', 'What happens', 'Max turns', 'Failure injected', 'Live run', 'Replay']) {
+    for (const h of ['Scenario', 'What goes wrong', 'Step budget', 'Failure', 'Run', 'Replay']) {
       await expect(page.locator('table thead')).toContainText(h)
     }
+    // the catalogue's origin words reach the table: a staged deletion is not "simulated"
+    await expect(rowFor(page, 'missing-config')).toContainText('staged: missing file')
+    await expect(rowFor(page, 'worker-crash')).toContainText('real: worker crash')
     await expect.poll(async () => await page.locator('table tbody tr').filter({ has: page.getByRole('button', { name: /^Run$|Starting/ }) }).count()).toBeGreaterThanOrEqual(4)
     for (const id of ['lost-ack', 'locked-file', 'missing-config', 'gauntlet']) {
       const row = rowFor(page, id)
@@ -82,7 +86,7 @@ test.describe('web product flows', () => {
     await box.press('Enter')
     await expect(box).toHaveValue(/^Prepare release 0\.2\.0/)
     await expect(page.getByRole('option')).toHaveCount(0)
-    await expect(page.getByText(/max 20 steps · enter to run/)).toBeVisible()
+    await expect(page.getByText(/up to 20 steps · Enter to run/)).toBeVisible()
   })
 
   test('F5 web-replay: lost-ack replay plays in the browser with a scrubber and ends graded 100, story says recovered', async ({ page }, info) => {
@@ -250,6 +254,60 @@ test.describe('web product flows', () => {
     await shot(page, info, 'F11_sidebar_collapsed')
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+b' : 'Control+b')
     await expect(sidebar).toHaveAttribute('data-state', 'expanded')
+  })
+
+  // Real-failure specimens from the backend's interruptions proof (features/interruptions.md), owned
+  // by the CLI identity below. The persisted (SQLite) projection is the default view of every
+  // finished run after a page load, so it must keep "unknown" / "not executed" distinct from a
+  // failed call there too (docs/web-review-findings.md §2) — never blame the agent for a dead worker
+  // or a dead sandbox.
+  const SPECIMEN_USER = 'u_00000000-0000-4000-8000-000000000000'
+  const SPECIMENS = {
+    workerCrash: { conversation: 'c_1a0982afb68bab29b5bc380', run: 'r_2991dd9a680a' },
+    sandboxLoss: { conversation: 'c_1a0982c9806c48810779d36', run: 'r_77368c6c998d' },
+  }
+
+  test('F12 web-persisted-provenance: a resumed worker crash and a lost sandbox keep unknown / not-executed status after reload, never a red failure', async ({ page, request }, info) => {
+    const cfg = (await (await request.get('/config.json')).json()) as { harnessUrl: string }
+    const probe = await request.get(`${cfg.harnessUrl}/conversations/${SPECIMENS.workerCrash.conversation}`, { headers: { 'X-Faultline-User': SPECIMEN_USER } })
+    test.skip(probe.status() !== 200, `specimen conversation answered ${probe.status()} (Store restoring after a deploy — B6 — or the specimen moved); not a UI verdict`)
+    await page.addInitScript((id) => {
+      try {
+        localStorage.setItem('faultline.user_id', id)
+      } catch {
+        /* ignore */
+      }
+    }, SPECIMEN_USER)
+
+    const expandAll = async () => {
+      for (let i = 0; i < 40; i++) {
+        const t = page.locator('main section[aria-label^="Step "] [aria-expanded="false"]').first()
+        if ((await t.count()) === 0) break
+        await t.click()
+      }
+    }
+
+    // (a) worker crash: the write that was in flight when the worker died is "unknown", the run is graded.
+    await page.goto(`/conversations/${SPECIMENS.workerCrash.conversation}?run=${SPECIMENS.workerCrash.run}`)
+    await expect(page.locator('header').getByText(/sqlite/)).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText(/Step 1 of/).first()).toBeVisible()
+    await expandAll()
+    await expect(page.locator('[data-status]').first()).toBeVisible()
+    await shot(page, info, 'F12_worker_crash_persisted')
+    // soft: keep going so one run reports both specimens
+    await expect.soft(page.locator('main [data-status="error"]'), 'the interrupted write (EHARNESS) must not render as a failed call on the persisted view').toHaveCount(0)
+    await expect.soft(page.locator('main [data-status="unknown"]').first(), 'the interrupted write must be "unknown" on the persisted view').toBeVisible()
+    await expect(page.locator('main')).toContainText(/verified_before_rewrite|Passed|Score/i)
+
+    // (b) sandbox loss: the read that hit the dead sandbox is not the agent's failure; the run is interrupted and not graded.
+    await page.goto(`/conversations/${SPECIMENS.sandboxLoss.conversation}?run=${SPECIMENS.sandboxLoss.run}`)
+    await expect(page.locator('header').getByText(/sqlite/)).toBeVisible({ timeout: 60_000 })
+    await expect(page.locator('header').getByText(/^interrupted$/)).toBeVisible()
+    await expandAll()
+    await expect(page.locator('[data-slot="not-graded"]')).toBeVisible()
+    await shot(page, info, 'F12_sandbox_loss_persisted')
+    await expect.soft(page.locator('main [data-status="error"]'), 'ESANDBOX on a lost sandbox must not render as a failed call').toHaveCount(0)
+    await expect.soft(page.locator('main [data-status="unknown"], main [data-status="not-executed"]').first(), 'the ESANDBOX read must be unknown / not executed').toBeVisible()
   })
 
   test.describe('live conversation (FAULTLINE_LIVE=1)', () => {
