@@ -112,14 +112,27 @@ test.describe('web product flows', () => {
     await expect(controls.getByRole('button', { name: 'Restart replay' })).toBeVisible({ timeout: 90_000 })
     const story = page.getByRole('region', { name: 'What happened' })
     await expect(story).toContainText(/Verdict/i)
+    // v21: the bar has a fixed height so the transcript below never jumps between checkpoints;
+    // a long narration scrolls inside its own box instead of growing the bar.
+    const heights = new Set<number>()
+    const barHeight = async () => Math.round((await story.boundingBox())!.height)
+    heights.add(await barHeight())
     // walk backwards through the checkpoints until the one that reports the injected fault
     let found = false
     for (let i = 0; i < 14 && !found; i++) {
       await story.getByRole('button', { name: 'Previous step' }).click()
+      heights.add(await barHeight())
       const text = (await story.textContent()) ?? ''
       if (/simulated: lost ack/i.test(text) || (/\bfault\b/i.test(text) && /CHANGELOG\.md|acknowledg/i.test(text))) found = true
     }
     expect(found).toBe(true)
+    expect([...heights], 'story bar height changed between checkpoints (transcript would jump)').toHaveLength(1)
+    expect([...heights][0]).toBeGreaterThanOrEqual(96)
+    expect([...heights][0]).toBeLessThanOrEqual(120)
+    const narration = story.locator('p')
+    await expect(narration).toBeVisible()
+    const overflow = await narration.evaluate((el) => getComputedStyle(el).overflowY)
+    expect(overflow, 'narration must scroll inside the bar, not clip or grow it').toBe('auto')
     await shot(page, info, 'F6_story_fault_checkpoint')
     await story.getByRole('button', { name: 'Next step' }).click()
     await expect(story).not.toContainText(/^$/)
@@ -147,6 +160,14 @@ test.describe('web product flows', () => {
     await expect.poll(async () => (await workspace.boundingBox())?.width ?? 0).toBeLessThan(2)
     await toggle.click()
     await expect.poll(async () => (await workspace.boundingBox())?.width ?? 0).toBeGreaterThan(200)
+    // v22: a collapsed split is never carried into the next conversation/replay on a wide screen —
+    // the panel is open again on arrival and the header toggle reads pressed.
+    await toggle.click()
+    await expect.poll(async () => (await workspace.boundingBox())?.width ?? 0).toBeLessThan(2)
+    await page.goto('/replay/gauntlet')
+    await expect(page.locator('[data-slot=resizable-panel]#workspace')).toBeVisible()
+    await expect.poll(async () => (await page.locator('[data-slot=resizable-panel]#workspace').boundingBox())?.width ?? 0).toBeGreaterThan(200)
+    await expect(page.locator('header').getByRole('button', { name: 'Workspace' })).toHaveAttribute('aria-pressed', 'true')
     await page.getByRole('tab', { name: 'Logs' }).click()
     const log = page.getByRole('log')
     await expect(log).toBeVisible()
