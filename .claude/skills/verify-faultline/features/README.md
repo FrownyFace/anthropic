@@ -45,4 +45,5 @@ surface), `Gotchas`.
 - [Recovery grading](./grading.md) — careful vs careless recovery and what the score must say.
 - [Live episode](./live-episode.md) — a real model run through the harness API and SSE stream.
 - [Secret boundary](./secret-boundary.md) — the provider key is reachable only inside `run_episode`.
+- [Interruptions and provenance](./interruptions.md) — a real worker crash resumed by a fresh worker, a real sandbox loss, and the injected lost-ack as comparison, proven live by `scripts/prove_interruptions.py` (separate step, not a stage).
 - [Web UI](./web-ui.md) — the user product flows in the browser (landing, composer, live run → conversation, persisted transcript, replays with a plain-English story bar, workspace, identity, theme, failure modes, sidebar), driven with Playwright through the real page.

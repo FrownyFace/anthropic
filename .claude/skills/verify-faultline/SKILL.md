@@ -136,6 +136,18 @@ check passes; without `--live` the live tests are reported as `flows.F3`, `flows
 `skipped`, never as a pass. Cleanup: the runner creates nothing on the backend except (with `--live`) one conversation
 and one run under a throw-away browser identity, which it leaves as evidence.
 
+## Interruptions proof (separate step)
+
+Failure provenance and real interruptions (PLAN.md §2.11) — a harness worker that really dies
+mid-write and is resumed, a sandbox that is really lost, the injected lost-ack as comparison — are
+proven by `scripts/prove_interruptions.py`, **not** by a stage of `verify_backend.py`: it runs three real
+model episodes (~4–5 min, a few cents) and the backend session keeps it as the single canonical
+driver. Recipe, evidence layout and current status: `features/interruptions.md`.
+
+```bash
+services/agent-harness/.venv/bin/python scripts/prove_interruptions.py            # PROVE PASS/FAIL, runs/<ts>_interruptions
+```
+
 ## Evidence
 
 Everything lands in `runs/<UTC ts>_verify/` (the `runs/` folder is gitignored and is the
@@ -181,7 +193,8 @@ output, the read-back changelog, or `scores.json` are missing.
   `--sandbox-url`, `--harness-url`.
 - Reused repo scripts: `scripts/smoke_roundtrip.py --scenario <id> [--fault-proof]` (broader
   reset→tools→observe→evaluate→delete smoke with its own `summary.json`), `scripts/run_episode_cli.py`
-  (live episode + SSE tail; evidence per run), `scripts/deploy.sh`.
+  (live episode + SSE tail; evidence per run), `scripts/prove_interruptions.py` (interruptions and
+  provenance proof, `features/interruptions.md`), `scripts/deploy.sh`.
 
 ## Known gaps (tracked in PLAN.md, not claimed here)
 
@@ -193,9 +206,9 @@ output, the read-back changelog, or `scores.json` are missing.
 - Harness persistence (`/conversations`, `X-Faultline-User`) is verified only through the browser
   (`F3/F4`, `verify_web.py --live`); `verify_backend.py` still relies only on `/health`, `/runs`,
   `/runs/{id}`, `/runs/{id}/events`.
-- **Failure provenance (PLAN.md §2.11) has a proof script but no recipe in this skill**:
-  `scripts/prove_interruptions.py` exists and its latest evidence is
-  `runs/20260913T002900Z_interruptions` (65/65 checks, worker-crash, sandbox-loss and lost-ack
-  cases; owned by the backend session). This skill has no `features/interruptions.md` and no
-  stage for it yet, and the browser flows do not assert `outcome` / `error_class` / `fault.fired.origin`
-  / `unevaluated` / `interrupted` / `ESANDBOX` beyond the status pills in `F10`.
+- **Failure provenance (PLAN.md §2.11)** is proven by `scripts/prove_interruptions.py`
+  (`features/interruptions.md`; Prove-phase evidence `runs/20260913T002900Z_interruptions`, 65/65) but
+  the recipe is **not yet re-verified against the Review2 changes** to that script (per-episode control
+  token, landing barrier); the backend session will announce when it is. The browser flows do not
+  assert `interruption` / `run.resumed` / `episode.sandbox` / `ESANDBOX` (nothing renders them yet)
+  beyond the status pills in `F10`.
