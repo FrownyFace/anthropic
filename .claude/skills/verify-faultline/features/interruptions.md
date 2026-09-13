@@ -25,7 +25,7 @@ here or in the helpers.
 - `int-lost-ack` the same ambiguity, **injected**: the `ETIMEDOUT` result must read `origin: injected`, `layer: boundary`, `outcome: unknown`, and `side_effect_applied: true` once the ledger resolves it. Same agent experience, different provenance.
 - `int-sandbox-loss` a real sandbox loss without `reap`: after `episode.reset` the script `DELETE`s *this run's own* episode on sandbox-env (terminating only that sandbox). The run must end `interrupted` with `error_class` `real` / `sandbox` / `ESANDBOX`, emit `episode.sandbox {terminated}`, skip grading (`score: null`, status never `ok`), and stop within one step of the first `ESANDBOX` instead of letting the model flail into a dead sandbox.
 - `int-conformance` every event of the three runs validates against `faultline_common.schemas.Event` and the documented `data` shapes (`docs/error-taxonomy.md`).
-- `int-specimen` `GET /runs/r_ccda8780cbee` — the pre-taxonomy specimen (a historical sandbox loss) is served untouched, and its record still answers the taxonomy's questions.
+- `int-specimen` `GET /runs/r_ccda8780cbee` — the pre-taxonomy specimen (a historical sandbox loss) is served untouched, and its record still answers the taxonomy's questions. *(As of 2026-09-13 00:58Z the deployed record still reads status `ok` with no `error_class` — 56 events, no `interruption`; its reclassification to `interrupted` / `ESANDBOX` is queued for the Review2 phase.)*
 - `int-transport-abort` *(opt-in, `--case transport-abort`)* the client cancels an in-flight request the server completes: `real` / `transport` / `ETRANSPORT`, outcome unknown, never retried.
 
 ## How to get to it (user POV)
@@ -36,7 +36,10 @@ here or in the helpers.
   the reducer folds them; see `web-ui.md` gaps.)*
 - Directly: `POST /runs {scenario_id: "worker-crash"}` on the harness, then `GET /runs/{id}` and read
   `events[]` for `interruption`, `run.resumed`, `episode.sandbox`, and each `tool.result.data.outcome`
-  / `error_class`.
+  / `error_class`. The script's runs are owned by identity `u_cli`; send `X-Faultline-User: u_cli` to
+  read them. *(The backend session has announced owner scoping for `GET /runs` and `/runs/{id}`
+  (404 on mismatch except legacy/null-owner runs) with Review2; on the deployment at 00:58Z both
+  still answer 200 without a header, so do not assert it yet.)*
 
 ## Driving it (separate step)
 
@@ -85,9 +88,20 @@ Under `runs/<UTC ts>_interruptions/`:
 | `worker-crash_readback.txt` | the `CHANGELOG.md` content the model read back after the resumed worker's `EHARNESS` result |
 | `conformance.json`, `specimen.json`, `health.json` | schema validation results, the specimen record, the doctor snapshot |
 
-Reference run (Prove phase): `runs/20260913T002900Z_interruptions` — `PROVE PASS` 65/65
-(worker-crash 18, lost-ack 10, sandbox-loss 12, conformance 22, specimen 3; runs `r_2991dd9a680a`
-ok/100 with `worker_generation: 2`, `r_9606e7fe615f` ok/100, `r_77368c6c998d` interrupted/no score).
+Reference runs (Prove phase, two independent passes):
+
+- `runs/20260913T002900Z_interruptions` — `PROVE PASS` 65/65 (worker-crash 18, lost-ack 10,
+  sandbox-loss 12, conformance 22, specimen 3); runs `r_2991dd9a680a` ok/100 with
+  `worker_generation: 2` (`interruption` at step 4 on the `CHANGELOG.md` write, `run.resumed` from
+  event 28), `r_9606e7fe615f` ok/100, `r_77368c6c998d` interrupted/no score.
+- `runs/20260913T003600Z_interruptions_repeat` — `PROVE PASS` 65/65; runs `r_1b83648dc693` ok/100
+  with `worker_generation: 2` (resumed from event 27), `r_902474ec32dd` ok/100, `r_ea3204c9e1e7`
+  interrupted/no score.
+
+Both worker-crash records were re-read from the deployed harness on 2026-09-13 00:58Z with
+`X-Faultline-User: u_cli`: each carries exactly one `interruption` (`layer: harness`, `code: EHARNESS`,
+`planned: true`, `resumed: true`, `outcome_known: false`, tool `write_file` on `CHANGELOG.md`) and one
+`run.resumed` (`worker_generation: 2`).
 
 ## Gotchas
 
