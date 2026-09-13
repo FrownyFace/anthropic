@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code transcript - page 8</title>
+    <style>
+:root { --bg-color: #f5f5f5; --card-bg: #ffffff; --user-bg: #e3f2fd; --user-border: #1976d2; --assistant-bg: #f5f5f5; --assistant-border: #9e9e9e; --thinking-bg: #fff8e1; --thinking-border: #ffc107; --thinking-text: #666; --tool-bg: #f3e5f5; --tool-border: #9c27b0; --tool-result-bg: #e8f5e9; --tool-error-bg: #ffebee; --text-color: #212121; --text-muted: #757575; --code-bg: #263238; --code-text: #aed581; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 16px; line-height: 1.6; }
+.container { max-width: 800px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin-bottom: 24px; padding-bottom: 8px; border-bottom: 2px solid var(--user-border); }
+.header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid var(--user-border); padding-bottom: 8px; margin-bottom: 24px; }
+.header-row h1 { border-bottom: none; padding-bottom: 0; margin-bottom: 0; flex: 1; min-width: 200px; }
+.message { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.message.user { background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.message.assistant { background: var(--card-bg); border-left: 4px solid var(--assistant-border); }
+.message.tool-reply { background: #fff8e1; border-left: 4px solid #ff9800; }
+.tool-reply .role-label { color: #e65100; }
+.tool-reply .tool-result { background: transparent; padding: 0; margin: 0; }
+.tool-reply .tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.message-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.role-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.user .role-label { color: var(--user-border); }
+time { color: var(--text-muted); font-size: 0.8rem; }
+.timestamp-link { color: inherit; text-decoration: none; }
+.timestamp-link:hover { text-decoration: underline; }
+.message:target { animation: highlight 2s ease-out; }
+@keyframes highlight { 0% { background-color: rgba(25, 118, 210, 0.2); } 100% { background-color: transparent; } }
+.message-content { padding: 16px; }
+.message-content p { margin: 0 0 12px 0; }
+.message-content p:last-child { margin-bottom: 0; }
+.thinking { background: var(--thinking-bg); border: 1px solid var(--thinking-border); border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 0.9rem; color: var(--thinking-text); }
+.thinking-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #f57c00; margin-bottom: 8px; }
+.thinking p { margin: 8px 0; }
+.assistant-text { margin: 8px 0; }
+.tool-use { background: var(--tool-bg); border: 1px solid var(--tool-border); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-header { font-weight: 600; color: var(--tool-border); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.tool-icon { font-size: 1.1rem; }
+.tool-description { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; font-style: italic; }
+.tool-result { background: var(--tool-result-bg); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-result.tool-error { background: var(--tool-error-bg); }
+.file-tool { border-radius: 8px; padding: 12px; margin: 12px 0; }
+.write-tool { background: linear-gradient(135deg, #e3f2fd 0%, #e8f5e9 100%); border: 1px solid #4caf50; }
+.edit-tool { background: linear-gradient(135deg, #fff3e0 0%, #fce4ec 100%); border: 1px solid #ff9800; }
+.file-tool-header { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.write-header { color: #2e7d32; }
+.edit-header { color: #e65100; }
+.file-tool-icon { font-size: 1rem; }
+.file-tool-path { font-family: monospace; background: rgba(0,0,0,0.08); padding: 2px 8px; border-radius: 4px; }
+.file-tool-fullpath { font-family: monospace; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; word-break: break-all; }
+.file-content { margin: 0; }
+.edit-section { display: flex; margin: 4px 0; border-radius: 4px; overflow: hidden; }
+.edit-label { padding: 8px 12px; font-weight: bold; font-family: monospace; display: flex; align-items: flex-start; }
+.edit-old { background: #fce4ec; }
+.edit-old .edit-label { color: #b71c1c; background: #f8bbd9; }
+.edit-old .edit-content { color: #880e4f; }
+.edit-new { background: #e8f5e9; }
+.edit-new .edit-label { color: #1b5e20; background: #a5d6a7; }
+.edit-new .edit-content { color: #1b5e20; }
+.edit-content { margin: 0; flex: 1; background: transparent; font-size: 0.85rem; }
+.edit-replace-all { font-size: 0.75rem; font-weight: normal; color: var(--text-muted); }
+.write-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #e6f4ea); }
+.edit-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff0e5); }
+.todo-list { background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border: 1px solid #81c784; border-radius: 8px; padding: 12px; margin: 12px 0; }
+.todo-header { font-weight: 600; color: #2e7d32; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.todo-items { list-style: none; margin: 0; padding: 0; }
+.todo-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 0.9rem; }
+.todo-item:last-child { border-bottom: none; }
+.todo-icon { flex-shrink: 0; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 50%; }
+.todo-completed .todo-icon { color: #2e7d32; background: rgba(46, 125, 50, 0.15); }
+.todo-completed .todo-content { color: #558b2f; text-decoration: line-through; }
+.todo-in-progress .todo-icon { color: #f57c00; background: rgba(245, 124, 0, 0.15); }
+.todo-in-progress .todo-content { color: #e65100; font-weight: 500; }
+.todo-pending .todo-icon { color: #757575; background: rgba(0,0,0,0.05); }
+.todo-pending .todo-content { color: #616161; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 8px 0; white-space: pre-wrap; word-wrap: break-word; }
+pre.json { color: #e0e0e0; }
+code { background: rgba(0,0,0,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+pre code { background: none; padding: 0; }
+.user-content { margin: 0; }
+.truncatable { position: relative; }
+.truncatable.truncated .truncatable-content { max-height: 200px; overflow: hidden; }
+.truncatable.truncated::after { content: ''; position: absolute; bottom: 32px; left: 0; right: 0; height: 60px; background: linear-gradient(to bottom, transparent, var(--card-bg)); pointer-events: none; }
+.message.user .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--user-bg)); }
+.message.tool-reply .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.tool-use .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-bg)); }
+.tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-result-bg)); }
+.expand-btn { display: none; width: 100%; padding: 8px 16px; margin-top: 4px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); }
+.expand-btn:hover { background: rgba(0,0,0,0.1); }
+.truncatable.truncated .expand-btn, .truncatable.expanded .expand-btn { display: block; }
+.pagination { display: flex; justify-content: center; gap: 8px; margin: 24px 0; flex-wrap: wrap; }
+.pagination a, .pagination span { padding: 5px 10px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; }
+.pagination a { background: var(--card-bg); color: var(--user-border); border: 1px solid var(--user-border); }
+.pagination a:hover { background: var(--user-bg); }
+.pagination .current { background: var(--user-border); color: white; }
+.pagination .disabled { color: var(--text-muted); border: 1px solid #ddd; }
+.pagination .index-link { background: var(--user-border); color: white; }
+details.continuation { margin-bottom: 16px; }
+details.continuation summary { cursor: pointer; padding: 12px 16px; background: var(--user-bg); border-left: 4px solid var(--user-border); border-radius: 12px; font-weight: 500; color: var(--text-muted); }
+details.continuation summary:hover { background: rgba(25, 118, 210, 0.15); }
+details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom: 0; }
+.index-item { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.index-item a { display: block; text-decoration: none; color: inherit; }
+.index-item a:hover { background: rgba(25, 118, 210, 0.1); }
+.index-item-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.index-item-number { font-weight: 600; color: var(--user-border); }
+.index-item-content { padding: 16px; }
+.index-item-stats { padding: 8px 16px 12px 32px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid rgba(0,0,0,0.06); }
+.index-item-commit { margin-top: 6px; padding: 4px 8px; background: #fff3e0; border-radius: 4px; font-size: 0.85rem; color: #e65100; }
+.index-item-commit code { background: rgba(0,0,0,0.08); padding: 1px 4px; border-radius: 3px; font-size: 0.8rem; margin-right: 6px; }
+.commit-card { margin: 8px 0; padding: 10px 14px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 6px; }
+.commit-card a { text-decoration: none; color: #5d4037; display: block; }
+.commit-card a:hover { color: #e65100; }
+.commit-card-hash { font-family: monospace; color: #e65100; font-weight: 600; margin-right: 8px; }
+.index-commit { margin-bottom: 12px; padding: 10px 16px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.index-commit a { display: block; text-decoration: none; color: inherit; }
+.index-commit a:hover { background: rgba(255, 152, 0, 0.1); margin: -10px -16px; padding: 10px 16px; border-radius: 8px; }
+.index-commit-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 4px; }
+.index-commit-hash { font-family: monospace; color: #e65100; font-weight: 600; }
+.index-commit-msg { color: #5d4037; }
+.index-item-long-text { margin-top: 8px; padding: 12px; background: var(--card-bg); border-radius: 8px; border-left: 3px solid var(--assistant-border); }
+.index-item-long-text .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--card-bg)); }
+.index-item-long-text-content { color: var(--text-color); }
+#search-box { display: none; align-items: center; gap: 8px; }
+#search-box input { padding: 6px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; width: 180px; }
+#search-box button, #modal-search-btn, #modal-close-btn { background: var(--user-border); color: white; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#search-box button:hover, #modal-search-btn:hover { background: #1565c0; }
+#modal-close-btn { background: var(--text-muted); margin-left: 8px; }
+#modal-close-btn:hover { background: #616161; }
+#search-modal[open] { border: none; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); padding: 0; width: 90vw; max-width: 900px; height: 80vh; max-height: 80vh; display: flex; flex-direction: column; }
+#search-modal::backdrop { background: rgba(0,0,0,0.5); }
+.search-modal-header { display: flex; align-items: center; gap: 8px; padding: 16px; border-bottom: 1px solid var(--assistant-border); background: var(--bg-color); border-radius: 12px 12px 0 0; }
+.search-modal-header input { flex: 1; padding: 8px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; }
+#search-status { padding: 8px 16px; font-size: 0.85rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+#search-results { flex: 1; overflow-y: auto; padding: 16px; }
+.search-result { margin-bottom: 16px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.search-result a { display: block; text-decoration: none; color: inherit; }
+.search-result a:hover { background: rgba(25, 118, 210, 0.05); }
+.search-result-page { padding: 6px 12px; background: rgba(0,0,0,0.03); font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+.search-result-content { padding: 12px; }
+.search-result mark { background: #fff59d; padding: 1px 2px; border-radius: 2px; }
+@media (max-width: 600px) { body { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } }
+</style>
+</head>
+<body>
+    <div class="container">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">Claude Code transcript</a> - page 8/8</h1>
+        
+
+<div class="pagination">
+<a href="index.html" class="index-link">Index</a>
+<a href="page-007.html">&larr; Prev</a>
+<a href="page-001.html">1</a>
+<a href="page-002.html">2</a>
+<a href="page-003.html">3</a>
+<a href="page-004.html">4</a>
+<a href="page-005.html">5</a>
+<a href="page-006.html">6</a>
+<a href="page-007.html">7</a>
+<span class="current">8</span>
+<span class="disabled">Next &rarr;</span>
+</div>
+
+        
+<div class="message user" id="msg-2026-09-13T01-31-14-846Z"><div class="message-header"><span class="role-label">User</span><a href="#msg-2026-09-13T01-31-14-846Z" class="timestamp-link"><time datetime="2026-09-13T01:31:14.846Z" data-timestamp="2026-09-13T01:31:14.846Z">2026-09-13T01:31:14.846Z</time></a></div><div class="message-content">
+<div class="user-content"><p>we're about to run out of tokens so let's just finish this up rn</p></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-31-20-980Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-31-20-980Z" class="timestamp-link"><time datetime="2026-09-13T01:31:20.980Z" data-timestamp="2026-09-13T01:31:20.980Z">2026-09-13T01:31:20.980Z</time></a></div><div class="message-content">
+<div class="thinking"><div class="thinking-label">Thinking</div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-31-22-042Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-31-22-042Z" class="timestamp-link"><time datetime="2026-09-13T01:31:22.042Z" data-timestamp="2026-09-13T01:31:22.042Z">2026-09-13T01:31:22.042Z</time></a></div><div class="message-content">
+<div class="assistant-text"><p>Finishing now. I'll stop the background work, check the tree is green, apply the Haiku-only rejection, deploy once, and hand you the wrap-up.</p></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-31-22-732Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-31-22-732Z" class="timestamp-link"><time datetime="2026-09-13T01:31:22.732Z" data-timestamp="2026-09-13T01:31:22.732Z">2026-09-13T01:31:22.732Z</time></a></div><div class="message-content">
+<div class="tool-use" data-tool-id="toolu_01HGqahHsExn8xb1z333Vhrs"><div class="tool-header"><span class="tool-icon">⚙</span> TaskStop</div><div class="truncatable"><div class="truncatable-content"><pre class="json">{
+  &#34;task_id&#34;: &#34;w0x9q3a7e&#34;
+}</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-31-22-733Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-31-22-733Z" class="timestamp-link"><time datetime="2026-09-13T01:31:22.733Z" data-timestamp="2026-09-13T01:31:22.733Z">2026-09-13T01:31:22.733Z</time></a></div><div class="message-content"><div class="tool-result tool-error"><div class="truncatable"><div class="truncatable-content"><pre>&lt;tool_use_error&gt;Task w0x9q3a7e is not running (status: killed)&lt;/tool_use_error&gt;</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-31-23-110Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-31-23-110Z" class="timestamp-link"><time datetime="2026-09-13T01:31:23.110Z" data-timestamp="2026-09-13T01:31:23.110Z">2026-09-13T01:31:23.110Z</time></a></div><div class="message-content">
+<div class="tool-use" data-tool-id="toolu_01HpuAzvgaVMdp4AScHRPHgz"><div class="tool-header"><span class="tool-icon">⚙</span> TaskStop</div><div class="truncatable"><div class="truncatable-content"><pre class="json">{
+  &#34;task_id&#34;: &#34;bnc72vgxt&#34;
+}</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-31-23-112Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-31-23-112Z" class="timestamp-link"><time datetime="2026-09-13T01:31:23.112Z" data-timestamp="2026-09-13T01:31:23.112Z">2026-09-13T01:31:23.112Z</time></a></div><div class="message-content"><div class="tool-result tool-error"><div class="truncatable"><div class="truncatable-content"><pre>&lt;tool_use_error&gt;Task bnc72vgxt is not running (status: killed)&lt;/tool_use_error&gt;</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-31-26-682Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-31-26-682Z" class="timestamp-link"><time datetime="2026-09-13T01:31:26.682Z" data-timestamp="2026-09-13T01:31:26.682Z">2026-09-13T01:31:26.682Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_01SHM1h5xN46y7kScLSs5FH9">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Stop background work; check both suites on the current tree</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">J=/Users/sohamwaychal/.claude/projects/-Users-sohamwaychal-Documents-anthropic/0f597490-b04f-4970-810d-0c5b2f49c687/subagents/workflows/wf_c74e6c58-4cd/journal.jsonl; echo &#34;review2 results=$(rtk proxy grep -c &#39;review2&#39; $J)&#34;; (cd services/sandbox-env &amp;&amp; .venv/bin/python -m pytest -q -p no:cacheprovider &gt;/dev/null 2&gt;&amp;1; echo &#34;sandbox-env tests exit=$?&#34;); (cd services/agent-harness &amp;&amp; .venv/bin/python -m pytest -q -p no:cacheprovider &gt;/dev/null 2&gt;&amp;1; echo &#34;harness tests exit=$?&#34;); git status --short | wc -l</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-31-32-221Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-31-32-221Z" class="timestamp-link"><time datetime="2026-09-13T01:31:32.221Z" data-timestamp="2026-09-13T01:31:32.221Z">2026-09-13T01:31:32.221Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>review2 results=0
+sandbox-env tests exit=0
+harness tests exit=0
+      94</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-31-36-071Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-31-36-071Z" class="timestamp-link"><time datetime="2026-09-13T01:31:36.071Z" data-timestamp="2026-09-13T01:31:36.071Z">2026-09-13T01:31:36.071Z</time></a></div><div class="message-content">
+<div class="thinking"><div class="thinking-label">Thinking</div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-31-40-377Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-31-40-377Z" class="timestamp-link"><time datetime="2026-09-13T01:31:40.377Z" data-timestamp="2026-09-13T01:31:40.377Z">2026-09-13T01:31:40.377Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_01BH7n3QzGtr7SyYbToBtudt">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Enforce Haiku-only in the harness allowlist and error message; run tests</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">python3 - &lt;&lt;&#39;EOF&#39;
+import pathlib, re
+c = pathlib.Path(&#34;services/agent-harness/harness/config.py&#34;); s = c.read_text()
+s = re.sub(r&#39;MODEL_ALLOWLIST = \[[^\]]*\]&#39;, &#39;MODEL_ALLOWLIST = [&#34;claude-haiku-4-5&#34;]  # user decision 2026-09-12: Haiku only&#39;, s, count=1)
+c.write_text(s)
+a = pathlib.Path(&#34;services/agent-harness/harness/api.py&#34;); t = a.read_text()
+t2 = t.replace(&#39;content={&#34;error&#34;: f&#34;model {model!r} is not allowed&#34;, &#34;allowed&#34;: config.MODEL_ALLOWLIST},&#39;,
+               &#39;content={&#34;error&#34;: &#34;model must be claude-haiku-4-5&#34;, &#34;allowed&#34;: config.MODEL_ALLOWLIST},&#39;)
+a.write_text(t2); print(&#34;config allowlist:&#34;, &#34;claude-haiku-4-5\&#34;]&#34; in s, &#34;| api message replaced:&#34;, t != t2)
+EOF
+cd services/agent-harness &amp;&amp; .venv/bin/python -m pytest -q -p no:cacheprovider &gt;/dev/null 2&gt;&amp;1; echo &#34;harness tests exit=$?&#34;</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-31-45-378Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-31-45-378Z" class="timestamp-link"><time datetime="2026-09-13T01:31:45.378Z" data-timestamp="2026-09-13T01:31:45.378Z">2026-09-13T01:31:45.378Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>config allowlist: True | api message replaced: True
+harness tests exit=0</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-31-52-789Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-31-52-789Z" class="timestamp-link"><time datetime="2026-09-13T01:31:52.789Z" data-timestamp="2026-09-13T01:31:52.789Z">2026-09-13T01:31:52.789Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_01Y4ReUTnfQnXRoeNJdi3jF6">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Deploy both services, prove the Sonnet rejection, and run the doctor check</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">cd /Users/sohamwaychal/Documents/anthropic &amp;&amp; modal deploy -e local services/sandbox-env/modal_app.py 2&gt;&amp;1 | grep -E &#34;deployed|Error|error&#34; | head -3; modal deploy -e local services/agent-harness/modal_app.py 2&gt;&amp;1 | grep -E &#34;deployed|Error|error&#34; | head -3; sleep 15; S=/private/tmp/claude-501/-Users-sohamwaychal-Documents-anthropic/0f597490-b04f-4970-810d-0c5b2f49c687/scratchpad; rtk proxy curl -s -m 30 -o $S/reject.json -w &#34;%{http_code}\n&#34; -X POST -H &#34;Content-Type: application/json&#34; -H &#34;X-Faultline-User: u_cli&#34; -d &#39;{&#34;scenario_id&#34;:&#34;lost-ack&#34;,&#34;model&#34;:&#34;claude-sonnet-5&#34;}&#39; https://appliedlabsai-local--faultline-harness-api.modal.run/runs; cat $S/reject.json | head -c 200; echo; rtk proxy curl -s -m 30 https://appliedlabsai-local--faultline-harness-api.modal.run/health | head -c 200; echo; services/sandbox-env/.venv/bin/python .claude/skills/verify-faultline/helpers/verify_backend.py --skip careful,careless,faults 2&gt;&amp;1 | grep -E &#34;^VERIFY&#34;</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-32-20-853Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-32-20-853Z" class="timestamp-link"><time datetime="2026-09-13T01:32:20.853Z" data-timestamp="2026-09-13T01:32:20.853Z">2026-09-13T01:32:20.853Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>✓ App deployed in 4.725s! 🎉
+https://modal.com/apps/appliedlabsai/local/deployed/faultline-sandbox-env
+✓ App deployed in 1.505s! 🎉
+https://modal.com/apps/appliedlabsai/local/deployed/faultline-harness
+400
+{&quot;error&quot;:&quot;model must be claude-haiku-4-5&quot;,&quot;allowed&quot;:[&quot;claude-haiku-4-5&quot;]}
+{&quot;svc&quot;:&quot;harness&quot;,&quot;ok&quot;:true,&quot;version&quot;:&quot;0.1.0&quot;,&quot;has_provider_key&quot;:false,&quot;model_default&quot;:&quot;claude-haiku-4-5&quot;,&quot;sandbox_env_url&quot;:&quot;https://appliedlabsai-local--faultline-sandbox-env-api.modal.run&quot;,&quot;detail&quot;:{
+VERIFY PASS  evidence: /Users/sohamwaychal/Documents/anthropic/runs/20260913T013219Z_verify</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-32-27-213Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-32-27-213Z" class="timestamp-link"><time datetime="2026-09-13T01:32:27.213Z" data-timestamp="2026-09-13T01:32:27.213Z">2026-09-13T01:32:27.213Z</time></a></div><div class="message-content">
+<div class="thinking"><div class="thinking-label">Thinking</div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-32-37-780Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-32-37-780Z" class="timestamp-link"><time datetime="2026-09-13T01:32:37.780Z" data-timestamp="2026-09-13T01:32:37.780Z">2026-09-13T01:32:37.780Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_01TS4eyCRffqWciJHVS6uMj3">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Finalize PLAN.md status: proven vs. unfinished after stopping Review2</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">python3 - &lt;&lt;&#39;EOF&#39;
+import pathlib
+p = pathlib.Path(&#34;PLAN.md&#34;); s = p.read_text()
+old_row_start = s.find(&#34;| Error classification + `worker-crash` (§2.11) |&#34;)
+if old_row_start != -1:
+    old_row_end = s.find(&#34;\n&#34;, old_row_start)
+    new_row = &#34;| Error classification + `worker-crash` (§2.11) | ✅ core / 🟡 hardening | **Proven live** (`runs/20260913T002900Z_interruptions` + `…T003600Z` repeat, 65/65): `error_class`/`outcome` on every tool result, `fault.fired` provenance, statuses `unevaluated`/`interrupted`, `interruption`/`run.resumed`/`episode.sandbox`, `ESANDBOX`; worker-crash `r_2991dd9a680a`/`r_1b83648dc693` resumed on worker 2 and scored 100; sandbox-loss ends `interrupted`. **Not finished (Review2 stopped at wrap-up 21:35 EDT)**: N1 per-episode control token / owner scoping, N5 stale-run finalisation, N7 landing barrier, Store B6–B9 + consistency window, backfill of `r_ccda8780cbee`, two-container log evidence, dead code — all listed in `runs/20260912T232850Z_cleanup-review/REVIEW2.md` |&#34;
+    s = s[:old_row_start] + new_row + s[old_row_end:]
+s = s.replace(&#34;| Review2 (swarm) | 21:10 | 21:45 | 0.6 |&#34;, &#34;| Review2 (swarm) | 21:10 | 21:35 (stopped, unfinished) | 0.4 |&#34;)
+s = s.replace(&#34;| **Total (this session, lead + swarm)** | 17:05 | ~21:45 | **≈4.7 h** |&#34;, &#34;| **Total (this session, lead + swarm)** | 17:05 | 21:38 | **≈4.5 h** |&#34;)
+p.write_text(s); print(&#34;PLAN status finalised honestly&#34;)
+EOF</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-32-40-131Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-32-40-131Z" class="timestamp-link"><time datetime="2026-09-13T01:32:40.131Z" data-timestamp="2026-09-13T01:32:40.131Z">2026-09-13T01:32:40.131Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>PLAN status finalised honestly</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-32-47-156Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-32-47-156Z" class="timestamp-link"><time datetime="2026-09-13T01:32:47.156Z" data-timestamp="2026-09-13T01:32:47.156Z">2026-09-13T01:32:47.156Z</time></a></div><div class="message-content">
+<div class="tool-use" data-tool-id="toolu_015N5RtmxF85NcpqiF6MU5yM"><div class="tool-header"><span class="tool-icon">⚙</span> SendMessage</div><div class="truncatable"><div class="truncatable-content"><pre class="json">{
+  &#34;to&#34;: &#34;uds:/tmp/cc-socks/84186.sock&#34;,
+  &#34;summary&#34;: &#34;To anthropic-10: FINAL state — what is proven, what Review2 did NOT finish&#34;,
+  &#34;message&#34;: &#34;FINAL (wrap-up ordered by the user, 21:38 EDT). Deployed now: faultline-sandbox-env and faultline-harness from the current tree (both suites green; Haiku-only enforced: POST /runs with any other model → 400 \&#34;model must be claude-haiku-4-5\&#34;; doctor PASS runs/20260913T013219Z_verify). PROVEN and safe to document as implemented: everything in the Prove phase (runs/20260913T002900Z_interruptions, 65/65 ×2) — error_class/outcome/attempts/sandbox on tool results, fault.fired provenance, unevaluated/interrupted, interruption/run.resumed/episode.sandbox events, ESANDBOX, worker-crash resume, sandbox-loss; first-review fixes (harness 9/11, sandbox-env 7/12 incl. --confcutdir, sweep removal, reap protect_active, bounded diffs). NOT DONE — Review2 was stopped before any agent reported, so keep these as open/contract-only in PLAN/ARCH/docs: N1 control token + owner scoping (GET /runs still unscoped), N2 reap fail-closed, N3 ledger race, N4 delete-on-WorkspaceError, N5 stale-run finalisation, N6 submitted resume, N7 landing barrier, N8 skipped-hidden-tests, Store B6–B9 and the redeploy consistency window, backfill of r_ccda8780cbee (imported, not reclassified), two-container log evidence, dead code lists. Banners: I am leaving the \&#34;contract, not verified\&#34; banners in FAULTS.md/GRADING.md for the real-failure/harness-fault sections since the hardening is incomplete; please keep PLAN §0 as I just wrote it (\&#34;✅ core / 🟡 hardening\&#34;) rather than \&#34;implemented\&#34;.&#34;,
+  &#34;type&#34;: &#34;message&#34;,
+  &#34;recipient&#34;: &#34;uds:/tmp/cc-socks/84186.sock&#34;,
+  &#34;content&#34;: &#34;FINAL (wrap-up ordered by the user, 21:38 EDT). D…&#34;
+}</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-32-49-565Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-32-49-565Z" class="timestamp-link"><time datetime="2026-09-13T01:32:49.565Z" data-timestamp="2026-09-13T01:32:49.565Z">2026-09-13T01:32:49.565Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>{&quot;success&quot;:true,&quot;message&quot;:&quot;“To anthropic-10: FINAL state — what is proven, what Review2 did NOT finish” → uds:/tmp/cc-socks/84186.sock&quot;,&quot;msg_id&quot;:&quot;e1fbb144-574b-407a-aac9-6e4c624b84ec&quot;}</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-32-52-695Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-32-52-695Z" class="timestamp-link"><time datetime="2026-09-13T01:32:52.695Z" data-timestamp="2026-09-13T01:32:52.695Z">2026-09-13T01:32:52.695Z</time></a></div><div class="message-content">
+<div class="tool-use" data-tool-id="toolu_01JCFQBjir7DHV7jpphPTycU"><div class="tool-header"><span class="tool-icon">⚙</span> SendMessage</div><div class="truncatable"><div class="truncatable-content"><pre class="json">{
+  &#34;to&#34;: &#34;uds:/tmp/cc-socks/98272.sock&#34;,
+  &#34;summary&#34;: &#34;To anthropic-4c + please relay to anthropic-ca: Haiku-only deployed; Review2 unfinished&#34;,
+  &#34;message&#34;: &#34;Deployed 21:34 EDT: faultline-harness rejects any model other than claude-haiku-4-5 — verified `POST /runs {\&#34;scenario_id\&#34;:\&#34;lost-ack\&#34;,\&#34;model\&#34;:\&#34;claude-sonnet-5\&#34;}` → 400 {\&#34;error\&#34;:\&#34;model must be claude-haiku-4-5\&#34;,\&#34;allowed\&#34;:[\&#34;claude-haiku-4-5\&#34;]}; /health model_default claude-haiku-4-5. faultline-sandbox-env redeployed with anthropic-b6&#39;s scenario descriptions. scripts/export_demo.py fix is on disk, uncommitted (please include it in whichever commit goes next; the user asked us to wrap up so I am not committing). Please relay to anthropic-ca: Review2 was stopped by the wrap-up before finishing, so owner scoping is NOT deployed (GET /runs still unscoped, /runs/{id} readable by any identity), r_ccda8780cbee is still status ok without error_class, and the \&#34;not re-verified against Review2\&#34; box in features/interruptions.md should stay. Specimen run ids and owner id are unchanged.&#34;,
+  &#34;type&#34;: &#34;message&#34;,
+  &#34;recipient&#34;: &#34;uds:/tmp/cc-socks/98272.sock&#34;,
+  &#34;content&#34;: &#34;Deployed 21:34 EDT: faultline-harness rejects any…&#34;
+}</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-32-55-165Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-32-55-165Z" class="timestamp-link"><time datetime="2026-09-13T01:32:55.165Z" data-timestamp="2026-09-13T01:32:55.165Z">2026-09-13T01:32:55.165Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>{&quot;success&quot;:true,&quot;message&quot;:&quot;“To anthropic-4c + please relay to anthropic-ca: Haiku-only deployed; Review2 unfinished” → uds:/tmp/cc-socks/98272.sock&quot;,&quot;msg_id&quot;:&quot;71797f2c-f103-484c-90c0-097e7fdb8ff2&quot;}</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-33-07-618Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-33-07-618Z" class="timestamp-link"><time datetime="2026-09-13T01:33:07.618Z" data-timestamp="2026-09-13T01:33:07.618Z">2026-09-13T01:33:07.618Z</time></a></div><div class="message-content">
+<div class="assistant-text"><p>Done. Final state as of 21:38 EDT:</p>
+<p><strong>Deployed and verified</strong>
+- <code>faultline-sandbox-env</code> and <code>faultline-harness</code> redeployed from the current tree (both test suites green, doctor check PASS in <code>runs/20260913T013219Z_verify/</code>). The web app is live at <code>https://appliedlabsai-local--faultline-web-site.us-east.modal.direct</code> (owned by the other sessions).
+- Haiku-only enforced: any other model on <code>POST /runs</code> returns 400 <code>model must be claude-haiku-4-5</code>.
+- Every scenario runs live on Haiku with no prompt tuning: <code>lost-ack</code>, <code>locked-file</code>, <code>missing-config</code>, <code>gauntlet</code> all 100; the deliberately weak run scores 8; careful vs careless recovery grades 100 vs 8 with the duplicate on disk as proof.
+- Failure provenance is proven live (65/65, twice): <code>error_class</code> and <code>outcome</code> on every tool result, <code>unevaluated</code>/<code>interrupted</code> statuses, <code>ESANDBOX</code> for real sandbox loss, and the <code>worker-crash</code> scenario where the harness process really dies mid-write and a second worker resumes the same run and episode (<code>r_2991dd9a680a</code>, score 100).
+- Verification skill <code>.claude/skills/verify-faultline</code> covers backend (65/65) and browser flows; evidence for everything is under <code>runs/</code>.</p>
+<p><strong>Not finished (Review2 was stopped at wrap-up; listed honestly in PLAN §0 and <code>runs/…/REVIEW2.md</code>)</strong>
+- Owner scoping and the per-episode control token (the <code>/interruptions</code> route is still unauthenticated), stale-run finalisation, the crash landing barrier, Store hardening (B6–B9, redeploy consistency window), reclassification of the specimen run <code>r_ccda8780cbee</code>, and dead-code cleanup.</p>
+<p><strong>For you to do</strong>
+- Commit the working tree on top of <code>main</code> (94 changed files; includes the <code>export_demo.py</code> fix). Repo: https://github.com/FrownyFace/anthropic
+- Record the video (<code>docs/VIDEO_SCRIPT.md</code>), export the Claude Code transcripts from this and the parallel sessions, and send the email with the repo, the web URL, transcripts and <code>RATIONALE.md</code>.
+- Time: this session was about 4.5 hours of wall-clock; add the parallel sessions when you state the total.</p></div></div></div>
+<div class="message user" id="msg-2026-09-13T01-33-27-008Z"><div class="message-header"><span class="role-label">User</span><a href="#msg-2026-09-13T01-33-27-008Z" class="timestamp-link"><time datetime="2026-09-13T01:33:27.008Z" data-timestamp="2026-09-13T01:33:27.008Z">2026-09-13T01:33:27.008Z</time></a></div><div class="message-content">
+<div class="user-content"><p>update and finalize @RATIONALE.md @README.md @ARCHITECTURE.md @PLAN.md (augment this with a mermaid diagram), redeploy everything, and commit and push</p></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-33-49-075Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-33-49-075Z" class="timestamp-link"><time datetime="2026-09-13T01:33:49.075Z" data-timestamp="2026-09-13T01:33:49.075Z">2026-09-13T01:33:49.075Z</time></a></div><div class="message-content">
+<div class="thinking"><div class="thinking-label">Thinking</div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-33-50-062Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-33-50-062Z" class="timestamp-link"><time datetime="2026-09-13T01:33:50.062Z" data-timestamp="2026-09-13T01:33:50.062Z">2026-09-13T01:33:50.062Z</time></a></div><div class="message-content">
+<div class="assistant-text"><p>I'll finalize the four docs (with a mermaid diagram in PLAN.md), redeploy all three apps, then commit and push on top of <code>main</code>. First a quick fact check on demo bundles, the web build state and git.</p></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-33-52-810Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-33-52-810Z" class="timestamp-link"><time datetime="2026-09-13T01:33:52.810Z" data-timestamp="2026-09-13T01:33:52.810Z">2026-09-13T01:33:52.810Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_016oxejWiPKjSRxo2PQofFG6">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Check demo bundles, web build freshness, and git state</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">ls apps/web/public/demo/ | tr &#39;\n&#39; &#39; &#39;; echo; echo &#34;dist newest: $(find apps/web/dist -type f -newer apps/web/src 2&gt;/dev/null | head -1 | wc -l) | src newer than dist index: $(find apps/web/src -type f -newer apps/web/dist/index.html 2&gt;/dev/null | wc -l)&#34;; git log --oneline -3; git status --short | wc -l; git fetch -q origin &amp;&amp; git status -sb | head -1; ls docs/</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-33-53-513Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-33-53-513Z" class="timestamp-link"><time datetime="2026-09-13T01:33:53.513Z" data-timestamp="2026-09-13T01:33:53.513Z">2026-09-13T01:33:53.513Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>README.md  3.2K gauntlet.json  127.2K locked-file.json  69.0K lost-ack.json  42.3K missing-config.json  47.4K  📊 5 files, 0 dirs (4 .json, 1 .md) 
+dist newest:        1 | src newer than dist index:        0
+8c34103 verify-faultline: correct attribution of the v23 landing rewrite
+d21e534 verify-faultline: web-landing entry for v23; include the kicker assertion
+081ebdd verify-faultline: guard persisted provenance and replay taxonomy
+      97
+## main...origin/main
+VIDEO_SCRIPT.md
+design-brief.md
+error-taxonomy.md
+harness-contract.md
+sandbox-env-ops.md
+store-notes.md
+web-contract-findings.md
+web-handoff.md
+web-language-pass.md
+web-review-findings.md</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-33-57-812Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-33-57-812Z" class="timestamp-link"><time datetime="2026-09-13T01:33:57.812Z" data-timestamp="2026-09-13T01:33:57.812Z">2026-09-13T01:33:57.812Z</time></a></div><div class="message-content">
+<div class="thinking"><div class="thinking-label">Thinking</div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-34-50-521Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-34-50-521Z" class="timestamp-link"><time datetime="2026-09-13T01:34:50.521Z" data-timestamp="2026-09-13T01:34:50.521Z">2026-09-13T01:34:50.521Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_0154nEPXkD39X1j1gbXMcoVA">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Finalize RATIONALE, README, ARCHITECTURE and PLAN (with mermaid diagrams)</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">cat &gt; RATIONALE.md &lt;&lt;&#39;EOF&#39;
+# Faultline — design rationale
+
+*Written companion to the ~5-minute video. Time spent: about 4.5 hours of lead-session wall-clock
+(17:05–21:40 EDT, 2026-09-12) plus parallel Claude Code sessions for the web UI, browser
+verification, documentation review and copy; PLAN.md §9 has the block-by-block log.*
+
+## Why this theme and this approach
+
+I chose **Theme 3 (Systems &amp; Reliability)** with an evaluation twist. The failures that matter in
+agent products are not model failures but tool-boundary failures: the file is not there, the write
+is refused, or — the nasty one — the write happened and only the acknowledgement was lost. A
+careless agent that retries blindly makes things worse; a careful one checks first. Most harness
+demos show the happy path. Faultline is a small, honest environment where those failures are
+first-class, visible, and **graded**, so you can compare recovery behaviour rather than just task
+completion.
+
+## What is non-obvious
+
+1. **Faults live outside the shell.** The fault plan, hit counters, ledger and grader sit in the
+   `sandbox-env` service; the agent&#39;s commands run in a separate Modal Sandbox with no network. An
+   injected `EACCES` or `504` is produced at the tool boundary and is indistinguishable from a real one.
+2. **Lost-ack plus an append-style task is a detectable idempotency trap.** `ack_lost` performs the
+   write and *then* withholds the response. The grader checks both the behaviour (a read of the file
+   before any further write, from the ledger) and the outcome (exactly one release entry, from the
+   file). Scripted controls score 100 for careful recovery and 8 for a blind re-append; live Haiku runs
+   scored 100 on every scenario without prompt tuning.
+3. **Simulated and real failures are different things, and the record must say which.** A concurrent
+   cleanup killed a sandbox during a live run; the harness labelled it like an injected fault and
+   ended the run &#34;ok&#34; with no score. That forced a provenance model: every failing tool result carries
+   `origin` (`injected | staged | real`), the layer that really failed, and an `outcome`
+   (`executed | failed | not_executed | unknown`); runs that cannot be graded end `unevaluated` or
+   `interrupted`. The agent still sees only OS-style errors.
+4. **A real harness interruption alongside the simulated one.** In `worker-crash` the harness process
+   really exits (`os._exit`) while its first changelog write is in flight; Modal re-invokes the function,
+   a fresh worker rebuilds the conversation from the persisted events, tells the gym, and hands the
+   agent an unknown-outcome result. Proven live twice (65/65 checks): worker generation 2, the ledger
+   confirms the write landed, final score 100.
+5. **The secret boundary is a deliverable.** Only the model-calling Modal function receives the
+   provider key; `/health` on every web function proves it is absent; the sandbox has no network.
+
+## Key decisions and tradeoffs
+
+| Decision | Alternative | Why |
+|---|---|---|
+| Three separately deployed Modal apps | one process | mirrors real trust boundaries; each piece is replaceable |
+| Modal Sandbox per episode, `block_network=True` | subprocess in the service container | real isolation is the point; cost bounded by timeouts and cleanup |
+| Faults intercepted at the tool boundary | `chmod`/deletes inside the sandbox | ack-lost is only expressible there; deterministic; plan stays hidden |
+| Spawned run + SQLite event log + reconnecting SSE | loop inside the HTTP request | Modal caps web requests at 150 s; refresh and replay become free |
+| Manual Anthropic tool loop | SDK tool runner | per-step hooks: observe after mutations, fault deltas, resume from events |
+| Haiku 4.5 only (other models rejected with 400) | a model picker | cheap enough for reviewers to run many episodes; the interesting result is that a small model recovers well when the environment forces verification |
+| Hidden tests uploaded only at evaluate time | tests in the workspace | the agent cannot game the grader |
+| Bundled replays | live only | the assignment requires self-contained evaluation |
+
+## What is verified and what is not
+
+Verified live, with evidence under `runs/` (gitignored) and the repo&#39;s verification skill
+(`.claude/skills/verify-faultline`, backend 65/65 plus Playwright browser flows): all scenarios on
+Haiku; all three injected fault kinds at the boundary; careful-vs-careless grading; the worker-crash
+resume; sandbox loss ending `interrupted`; the secret boundary. Known limits, left honest in PLAN §0:
+the gym&#39;s interruption route and run listing are not yet token-scoped (a second review found that a
+forged report could change a grade), the crash trigger sleeps rather than waiting on a confirmed write
+barrier, historical runs were imported but not reclassified, and the raw-shell fault matcher is
+token-based, not a shell parser.
+
+## With more time
+
+Per-episode control tokens and owner scoping; a landing barrier before the planned crash; warm
+sandbox pools; batch runs across seeds and models with recovery-rate charts (the gym is seedable);
+more fault kinds (partial writes, flaky test runner); trajectory export for evals.
+
+## Use of AI
+
+Built with Claude Code: a lead session (Fable 5.1) that owned the plan, contracts, scenarios, fault
+semantics and grading rules, and Opus agent swarms for parallel implementation, live proofs and
+cross-review, plus parallel sessions for the UI, browser verification and docs. My judgement went
+into the problem framing, the trust-boundary split, the gym contract, what counts as evidence, and
+repeatedly refusing to accept a score as proof without file-level and ledger-level checks. The
+Claude Code transcripts are submitted alongside the repo.
+EOF
+python3 - &lt;&lt;&#39;EOF&#39;
+import pathlib, re
+# README
+r = pathlib.Path(&#34;README.md&#34;); t = r.read_text()
+t = t.replace(&#34;&#34;&#34;The saved interruption suite (`runs/20260913T001500Z_interruptions/summary.json`, gitignored local
+evidence) passed 39/39 checks across worker crash, transport abort, sandbox loss, simulated lost-ack
+and a prior failure specimen. The proof driver is [scripts/prove_interruptions.py](scripts/prove_interruptions.py).
+These results are scoped to the tested runs:&#34;&#34;&#34;,
+&#34;&#34;&#34;The independent interruption proof (`runs/20260913T002900Z_interruptions/` and a repeat,
+gitignored local evidence) passed 65/65 checks twice across worker crash, simulated lost-ack, sandbox
+loss, event conformance and a historical specimen. The driver is
+[scripts/prove_interruptions.py](scripts/prove_interruptions.py). These results are scoped to the tested runs:&#34;&#34;&#34;)
+t = t.replace(&#34;- Four simulated-fault scenario replays are bundled; a worker-crash replay is not bundled yet.&#34;,
+              &#34;- Four simulated-fault scenario replays are bundled; a worker-crash replay is not bundled yet (run it live).\n- Not yet hardened (PLAN §0): the gym&#39;s interruption route and run listing are not token-scoped, so grades are not tamper-proof against a forged report; historical runs were imported but not reclassified.&#34;)
+r.write_text(t)
+# ARCHITECTURE
+a = pathlib.Path(&#34;ARCHITECTURE.md&#34;); s = a.read_text()
+s = s.replace(&#34;&#34;&#34;**Status (2026-09-12 19:40 EDT): contract only.** Every field below is defined in `schemas.py` and the
+docs, but no service emits it yet: sandbox-env still answers a lost sandbox with `EINTERNAL` and has no
+`/interruptions` route, and the harness has no crash/resume path. The lead is implementing it.&#34;&#34;&#34;,
+&#34;&#34;&#34;**Status (2026-09-12 21:40 EDT): implemented and proven live** (`runs/20260913T002900Z_interruptions/`,
+65/65 twice): every field below is emitted; sandbox-env answers a lost sandbox with `ESANDBOX` and has
+`POST /episodes/{id}/interruptions`; the harness resumes a crashed worker (`worker-crash`). Still open
+(second review, unfinished at wrap-up): the interruption route and `GET /episodes` are not token-scoped,
+so a forged report can alter a grade; the crash trigger has no landing barrier; stale `running` runs are
+not finalised; historical runs are imported but not reclassified.&#34;&#34;&#34;)
+s = s.replace(&#34;`episode.evaluated`, `run.finished`, `log`; §5.4 adds `interruption`, `run.resumed` and `episode.sandbox`\nto the contract, not yet emitted).&#34;,
+              &#34;`episode.evaluated`, `run.finished`, `log`, `interruption`, `run.resumed`, `episode.sandbox`).&#34;)
+s = s.replace(&#34;| 11 | Haiku 4.5 default, Sonnet/Opus 5 allowlisted | Sonnet default | cost and latency for a demo; the ack-lost scenario is more interesting when a cheaper model sometimes fails it |&#34;,
+              &#34;| 11 | Haiku 4.5 only — the harness rejects any other model with 400 (user decision, 21:30 EDT) | a model picker; Sonnet default | cost and latency for a demo; a small model recovering well under forced verification is the interesting result |&#34;)
+s = s.replace(&#34;| Sandbox guardrails | `timeout=1800`, `idle_timeout=600`, `block_network=True`, delete in `finally`, `reap` helper |&#34;,
+              &#34;| Sandbox guardrails | `timeout=1800`, `idle_timeout=600`, `block_network=True`, delete in `finally`, `reap` helper (protects active episodes by default) |&#34;)
+a.write_text(s)
+# PLAN: mermaid diagram + final status
+p = pathlib.Path(&#34;PLAN.md&#34;); u = p.read_text()
+mermaid = &#34;&#34;&#34;
+#### 2.1.1 Diagram (mermaid)
+
+```mermaid
+flowchart LR
+  subgraph B[&#34;Browser · apps/web (Modal Server, static)&#34;]
+    UI[&#34;Transcript · verdict · workspace diff · replays&#34;]
+  end
+  subgraph H[&#34;faultline-harness (Modal)&#34;]
+    API[&#34;api (FastAPI, no secret)\\nPOST /runs · GET /runs/{id} · SSE&#34;]
+    ST[&#34;Store (SQLite on Volume)\\nsingle writer&#34;]
+    RE[&#34;run_episode\\nONLY holder of ANTHROPIC_API_KEY\\nmodel loop · resume on crash&#34;]
+  end
+  subgraph G[&#34;faultline-sandbox-env (Modal)&#34;]
+    GYM[&#34;gym REST\\nreset · observe · evaluate · delete&#34;]
+    MCP[&#34;MCP tools\\nrun_command · read_file · write_file · list_dir&#34;]
+    FP[&#34;fault plan · ledger · grader\\n(never inside the sandbox)&#34;]
+  end
+  SB[&#34;Modal Sandbox\\n/workspace · no network&#34;]
+  ANTH[&#34;Anthropic API\\nclaude-haiku-4-5&#34;]
+  UI -- &#34;JSON + SSE (X-Faultline-User)&#34; --&gt; API
+  API -- spawn --&gt; RE
+  API &lt;--&gt; ST
+  RE &lt;--&gt; ST
+  RE -- &#34;messages.create&#34; --&gt; ANTH
+  RE -- &#34;X-Faultline-Episode&#34; --&gt; MCP
+  RE -- &#34;reset / observe / evaluate&#34; --&gt; GYM
+  MCP --&gt; FP
+  GYM --&gt; FP
+  FP -- &#34;exec / files&#34; --&gt; SB
+```
+
+```mermaid
+sequenceDiagram
+  participant A as Agent (Haiku)
+  participant H as harness
+  participant E as sandbox-env
+  participant S as Sandbox
+  H-&gt;&gt;E: POST /episodes (reset)
+  E-&gt;&gt;S: create · upload fixture · apply sticky faults
+  A-&gt;&gt;H: write_file CHANGELOG.md
+  H-&gt;&gt;E: MCP write_file
+  E-&gt;&gt;S: write (lands)
+  E--&gt;&gt;H: ETIMEDOUT (ack withheld, injected) / or the harness worker dies (worker-crash, real)
+  H--&gt;&gt;A: error, outcome unknown
+  A-&gt;&gt;H: read_file CHANGELOG.md
+  H-&gt;&gt;E: MCP read_file
+  E--&gt;&gt;A: one 0.2.0 section (write had landed)
+  A-&gt;&gt;H: submit
+  H-&gt;&gt;E: POST /episodes/{id}/evaluate (hidden tests + ledger checks)
+  E--&gt;&gt;H: score 100 · verified_before_rewrite ok
+```
+&#34;&#34;&#34;
+u = u.replace(&#34;\n### 2.2 Gym contract (sandbox-env)&#34;, mermaid + &#34;\n### 2.2 Gym contract (sandbox-env)&#34;, 1)
+u = u.replace(&#34;| Submission artefacts | 🟡 | repo pushed (`4ca4492`+), README + RATIONALE written (time filled), `docs/VIDEO_SCRIPT.md` ready; **open**: record the video, export the Claude Code transcripts (this session + the parallel sessions), final commit after Review2, send the email |&#34;,
+              &#34;| Submission artefacts | 🟡 | repo pushed, README/RATIONALE/ARCHITECTURE/PLAN finalised 21:45 EDT, all three apps redeployed; **open for the candidate**: record the video (`docs/VIDEO_SCRIPT.md`), export the Claude Code transcripts (this + parallel sessions), send the email |&#34;)
+p.write_text(u); print(&#34;docs finalised&#34;)
+EOF</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-34-53-188Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-34-53-188Z" class="timestamp-link"><time datetime="2026-09-13T01:34:53.188Z" data-timestamp="2026-09-13T01:34:53.188Z">2026-09-13T01:34:53.188Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>docs finalised</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-34-53-629Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-34-53-629Z" class="timestamp-link"><time datetime="2026-09-13T01:34:53.629Z" data-timestamp="2026-09-13T01:34:53.629Z">2026-09-13T01:34:53.629Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_013t9HapDDxHFRFyMP1U82ZC">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Redeploy sandbox-env, harness and web (prebuilt dist)</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">modal deploy -e local services/sandbox-env/modal_app.py 2&gt;&amp;1 | grep -E &#34;deployed|rror&#34; | head -2; modal deploy -e local services/agent-harness/modal_app.py 2&gt;&amp;1 | grep -E &#34;deployed|rror&#34; | head -2; HARNESS_URL=https://appliedlabsai-local--faultline-harness-api.modal.run modal deploy -e local apps/web/modal_app.py 2&gt;&amp;1 | grep -E &#34;deployed|rror|site&#34; | head -3</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-35-04-380Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-35-04-380Z" class="timestamp-link"><time datetime="2026-09-13T01:35:04.380Z" data-timestamp="2026-09-13T01:35:04.380Z">2026-09-13T01:35:04.380Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>✓ App deployed in 1.837s! 🎉
+https://modal.com/apps/appliedlabsai/local/deployed/faultline-sandbox-env
+✓ App deployed in 1.345s! 🎉
+https://modal.com/apps/appliedlabsai/local/deployed/faultline-harness
+├── 🔨 Created function site.
+└── 🔨 Created flash service endpoint for site =&gt; 
+    https://appliedlabsai-local--faultline-web-site.us-east.modal.direct</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-35-07-864Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-35-07-864Z" class="timestamp-link"><time datetime="2026-09-13T01:35:07.864Z" data-timestamp="2026-09-13T01:35:07.864Z">2026-09-13T01:35:07.864Z</time></a></div><div class="message-content">
+<div class="thinking"><div class="thinking-label">Thinking</div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-35-07-867Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-35-07-867Z" class="timestamp-link"><time datetime="2026-09-13T01:35:07.867Z" data-timestamp="2026-09-13T01:35:07.867Z">2026-09-13T01:35:07.867Z</time></a></div><div class="message-content">
+<div class="thinking"><div class="thinking-label">Thinking</div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-35-16-033Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-35-16-033Z" class="timestamp-link"><time datetime="2026-09-13T01:35:16.033Z" data-timestamp="2026-09-13T01:35:16.033Z">2026-09-13T01:35:16.033Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_01PAijRc59TbD7m4pvWAJhK1">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Move the diagrams into ARCHITECTURE.md; verify all three deployments answer</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">python3 - &lt;&lt;&#39;EOF&#39;
+import pathlib
+p = pathlib.Path(&#34;PLAN.md&#34;); u = p.read_text()
+start = u.index(&#34;\n#### 2.1.1 Diagram (mermaid)&#34;); end = u.index(&#34;\n### 2.2 Gym contract (sandbox-env)&#34;)
+block = u[start:end]
+u = u[:start] + &#34;\n\nDiagrams (component graph + the lost-ack / worker-crash sequence): `ARCHITECTURE.md` §2.1.\n&#34; + u[end:]
+p.write_text(u)
+a = pathlib.Path(&#34;ARCHITECTURE.md&#34;); s = a.read_text()
+block = block.replace(&#34;#### 2.1.1 Diagram (mermaid)&#34;, &#34;### 2.1 Diagrams\n\nComponent graph (who holds what; arrows are the only network paths) and the sequence that every\nfault scenario shares — the injected `ack_lost` and the real `worker-crash` diverge only at the\nhighlighted step:&#34;)
+anchor = &#34;\nWhat each process can see:\n&#34;
+assert anchor in s
+s = s.replace(anchor, &#34;\n&#34; + block.strip(&#34;\n&#34;) + &#34;\n&#34; + anchor, 1)
+a.write_text(s); print(&#34;mermaid moved to ARCHITECTURE.md §2.1; PLAN points at it&#34;)
+EOF
+sleep 12; for u in https://appliedlabsai-local--faultline-sandbox-env-api.modal.run/health https://appliedlabsai-local--faultline-harness-api.modal.run/health https://appliedlabsai-local--faultline-web-site.us-east.modal.direct/config.json; do printf &#34;%s -&gt; &#34; &#34;$u&#34;; rtk proxy curl -s -m 60 -o /dev/null -w &#34;%{http_code}\n&#34; &#34;$u&#34;; done; services/sandbox-env/.venv/bin/python .claude/skills/verify-faultline/helpers/verify_backend.py --skip careful,careless,faults 2&gt;&amp;1 | grep -E &#34;^VERIFY&#34;</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-35-34-594Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-35-34-594Z" class="timestamp-link"><time datetime="2026-09-13T01:35:34.594Z" data-timestamp="2026-09-13T01:35:34.594Z">2026-09-13T01:35:34.594Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>mermaid moved to ARCHITECTURE.md §2.1; PLAN points at it
+https://appliedlabsai-local--faultline-sandbox-env-api.modal.run/health -&gt; 200
+https://appliedlabsai-local--faultline-harness-api.modal.run/health -&gt; 200
+https://appliedlabsai-local--faultline-web-site.us-east.modal.direct/config.json -&gt; 200
+VERIFY PASS  evidence: /Users/sohamwaychal/Documents/anthropic/runs/20260913T013533Z_verify</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-35-42-711Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-35-42-711Z" class="timestamp-link"><time datetime="2026-09-13T01:35:42.711Z" data-timestamp="2026-09-13T01:35:42.711Z">2026-09-13T01:35:42.711Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_01Rfq1kGQHpyFYkMYrE1Ai5f">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Commit the working tree on top of main and push</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">git pull --rebase -q origin main 2&gt;&amp;1 | tail -2; git add -A &amp;&amp; git status --short | wc -l &amp;&amp; git commit -q -m &#34;Faultline: failure provenance, worker-crash resume, Haiku-only, docs finalised
+
+- schemas: ErrorClass/ToolOutcome/Interruption/HarnessFault, run statuses unevaluated/interrupted,
+  control_token, MODEL_ALLOWLIST = claude-haiku-4-5
+- sandbox-env: ESANDBOX, ledger provenance, staged faults_fired, /interruptions route, scenario
+  passthrough (checks/faults_public/harness_faults), worker-crash scenario, review fixes
+- harness: classification, interruption/run.resumed/episode.sandbox events, resume after a real
+  worker crash, SQLite Store + identity + conversations, Haiku-only 400, review fixes
+- scripts: prove_interruptions.py, fault_proofs.py, export_demo.py (new event types, sandbox_id)
+- verify-faultline skill (backend + browser), FAULTS.md, error taxonomy, ARCHITECTURE mermaid,
+  RATIONALE/README/PLAN finalised
+
+Co-Authored-By: Claude Fable 5.1 &lt;noreply@anthropic.com&gt;&#34; &amp;&amp; git push -q origin main 2&gt;&amp;1 | tail -2; git log --oneline -1; git status -sb | head -1</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-35-44-557Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-35-44-557Z" class="timestamp-link"><time datetime="2026-09-13T01:35:44.557Z" data-timestamp="2026-09-13T01:35:44.557Z">2026-09-13T01:35:44.557Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>error: Please commit or stash them.
+
+     102
+197997e Faultline: failure provenance, worker-crash resume, Haiku-only, docs finalised
+## main...origin/main</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-35-49-710Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-35-49-710Z" class="timestamp-link"><time datetime="2026-09-13T01:35:49.710Z" data-timestamp="2026-09-13T01:35:49.710Z">2026-09-13T01:35:49.710Z</time></a></div><div class="message-content">
+<div class="thinking"><div class="thinking-label">Thinking</div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-35-51-190Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-35-51-190Z" class="timestamp-link"><time datetime="2026-09-13T01:35:51.190Z" data-timestamp="2026-09-13T01:35:51.190Z">2026-09-13T01:35:51.190Z</time></a></div><div class="message-content">
+<div class="tool-use bash-tool" data-tool-id="toolu_015h8F9AibicpoYJ1k9Q5Kso">
+<div class="tool-header"><span class="tool-icon">$</span> Bash</div>
+<div class="tool-description">Confirm the push landed on origin/main</div><div class="truncatable"><div class="truncatable-content"><pre class="bash-command">git fetch -q origin &amp;&amp; git status -sb | head -1 &amp;&amp; git log --oneline -1 origin/main &amp;&amp; git diff --stat HEAD origin/main | tail -1; echo &#34;(empty diff = pushed)&#34;</pre></div><button class="expand-btn">Show more</button></div>
+</div></div></div>
+<div class="message tool-reply" id="msg-2026-09-13T01-35-51-557Z"><div class="message-header"><span class="role-label">Tool reply</span><a href="#msg-2026-09-13T01-35-51-557Z" class="timestamp-link"><time datetime="2026-09-13T01:35:51.557Z" data-timestamp="2026-09-13T01:35:51.557Z">2026-09-13T01:35:51.557Z</time></a></div><div class="message-content"><div class="tool-result"><div class="truncatable"><div class="truncatable-content"><pre>ok fetched
+## main...origin/main197997e Faultline: failure provenance, worker-crash resume, Haiku-only, docs finalised
+(empty diff = pushed)</pre></div><button class="expand-btn">Show more</button></div></div></div></div>
+<div class="message assistant" id="msg-2026-09-13T01-36-02-261Z"><div class="message-header"><span class="role-label">Assistant</span><a href="#msg-2026-09-13T01-36-02-261Z" class="timestamp-link"><time datetime="2026-09-13T01:36:02.261Z" data-timestamp="2026-09-13T01:36:02.261Z">2026-09-13T01:36:02.261Z</time></a></div><div class="message-content">
+<div class="assistant-text"><p>Everything is finalized, redeployed, committed and pushed.</p>
+<p><strong>Docs</strong>
+- <a href="RATIONALE.md">RATIONALE.md</a> rewritten as the final written submission: theme choice, the five non-obvious ideas, decision/tradeoff table, what is verified vs. left open, extensions, use of AI, time spent (about 4.5 h lead session plus parallel sessions).
+- <a href="ARCHITECTURE.md">ARCHITECTURE.md</a> now carries the mermaid diagrams in §2.1 (component graph with the trust boundaries, and the lost-ack / worker-crash sequence), and its reliability-contract status reads "implemented and proven live" with the unfinished hardening items stated plainly; the decision log records Haiku-only.
+- <a href="README.md">README.md</a> points at the independent 65/65 proof and states the remaining limits; <a href="PLAN.md">PLAN.md</a> links to the diagrams, and its status board and time log are final.</p>
+<p><strong>Deployed</strong> (all answering, doctor check PASS in <code>runs/20260913T013533Z_verify/</code>)
+- <code>faultline-sandbox-env</code> and <code>faultline-harness</code> from the current tree; the harness rejects any model other than <code>claude-haiku-4-5</code> with a 400.
+- <code>faultline-web</code> from the prebuilt <code>dist/</code> (newer than <code>src/</code>, i.e. the current UI) at https://appliedlabsai-local--faultline-web-site.us-east.modal.direct</p>
+<p><strong>Committed and pushed</strong>: <code>197997e</code> on <code>main</code> at https://github.com/FrownyFace/anthropic (102 files; <code>runs/</code>, secrets, build outputs and the assignment PDF stay ignored).</p>
+<p><strong>Still yours to do for submission</strong>: record the video from <code>docs/VIDEO_SCRIPT.md</code>, export the Claude Code transcripts (this session and the parallel ones), and send the email with the repo link, the web URL, the transcripts and RATIONALE.md. Known open engineering items are listed honestly in PLAN §0 (token-scoped interruption route and run listing, crash landing barrier, stale-run finalisation, reclassifying historical runs).</p></div></div></div>
+<div class="message user" id="msg-2026-09-13T20-48-34-844Z"><div class="message-header"><span class="role-label">User</span><a href="#msg-2026-09-13T20-48-34-844Z" class="timestamp-link"><time datetime="2026-09-13T20:48:34.844Z" data-timestamp="2026-09-13T20:48:34.844Z">2026-09-13T20:48:34.844Z</time></a></div><div class="message-content">
+<div class="user-content"><p><task-notification>
+<task-id>w0x9q3a7e</task-id>
+<tool-use-id>toolu_018mZRrnAhjQFJYvs5GDDyAg</tool-use-id>
+<status>stopped</status></p>
+<summary>Background workflow "faultline-build" (run wf_c74e6c58-4cd) didn't finish before the previous session ended</summary>
+<p><note>No completion record was found for it in the previous session. It may have been stopped (via the UI or TaskStop — these leave no transcript marker), or it may have been running when the previous Claude Code process exited. To pick up where it left off, relaunch with Workflow({scriptPath, resumeFromRunId}) using the run id from the summary — completed agent() calls return cached.</note>
+</task-notification></p></div></div></div>
+        
+
+<div class="pagination">
+<a href="index.html" class="index-link">Index</a>
+<a href="page-007.html">&larr; Prev</a>
+<a href="page-001.html">1</a>
+<a href="page-002.html">2</a>
+<a href="page-003.html">3</a>
+<a href="page-004.html">4</a>
+<a href="page-005.html">5</a>
+<a href="page-006.html">6</a>
+<a href="page-007.html">7</a>
+<span class="current">8</span>
+<span class="disabled">Next &rarr;</span>
+</div>
+
+    </div>
+    <script>
+document.querySelectorAll('time[data-timestamp]').forEach(function(el) {
+    const timestamp = el.getAttribute('data-timestamp');
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    if (isToday) { el.textContent = timeStr; }
+    else { el.textContent = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + timeStr; }
+});
+document.querySelectorAll('pre.json').forEach(function(el) {
+    let text = el.textContent;
+    text = text.replace(/"([^"]+)":/g, '<span style="color: #ce93d8">"$1"</span>:');
+    text = text.replace(/: "([^"]*)"/g, ': <span style="color: #81d4fa">"$1"</span>');
+    text = text.replace(/: (\d+)/g, ': <span style="color: #ffcc80">$1</span>');
+    text = text.replace(/: (true|false|null)/g, ': <span style="color: #f48fb1">$1</span>');
+    el.innerHTML = text;
+});
+document.querySelectorAll('.truncatable').forEach(function(wrapper) {
+    const content = wrapper.querySelector('.truncatable-content');
+    const btn = wrapper.querySelector('.expand-btn');
+    if (content.scrollHeight > 250) {
+        wrapper.classList.add('truncated');
+        btn.addEventListener('click', function() {
+            if (wrapper.classList.contains('truncated')) { wrapper.classList.remove('truncated'); wrapper.classList.add('expanded'); btn.textContent = 'Show less'; }
+            else { wrapper.classList.remove('expanded'); wrapper.classList.add('truncated'); btn.textContent = 'Show more'; }
+        });
+    }
+});
+</script>
+</body>
+</html>

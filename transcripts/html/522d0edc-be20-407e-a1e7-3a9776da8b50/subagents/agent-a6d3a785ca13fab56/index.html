@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code transcript - Index</title>
+    <style>
+:root { --bg-color: #f5f5f5; --card-bg: #ffffff; --user-bg: #e3f2fd; --user-border: #1976d2; --assistant-bg: #f5f5f5; --assistant-border: #9e9e9e; --thinking-bg: #fff8e1; --thinking-border: #ffc107; --thinking-text: #666; --tool-bg: #f3e5f5; --tool-border: #9c27b0; --tool-result-bg: #e8f5e9; --tool-error-bg: #ffebee; --text-color: #212121; --text-muted: #757575; --code-bg: #263238; --code-text: #aed581; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 16px; line-height: 1.6; }
+.container { max-width: 800px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin-bottom: 24px; padding-bottom: 8px; border-bottom: 2px solid var(--user-border); }
+.header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid var(--user-border); padding-bottom: 8px; margin-bottom: 24px; }
+.header-row h1 { border-bottom: none; padding-bottom: 0; margin-bottom: 0; flex: 1; min-width: 200px; }
+.message { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.message.user { background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.message.assistant { background: var(--card-bg); border-left: 4px solid var(--assistant-border); }
+.message.tool-reply { background: #fff8e1; border-left: 4px solid #ff9800; }
+.tool-reply .role-label { color: #e65100; }
+.tool-reply .tool-result { background: transparent; padding: 0; margin: 0; }
+.tool-reply .tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.message-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.role-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.user .role-label { color: var(--user-border); }
+time { color: var(--text-muted); font-size: 0.8rem; }
+.timestamp-link { color: inherit; text-decoration: none; }
+.timestamp-link:hover { text-decoration: underline; }
+.message:target { animation: highlight 2s ease-out; }
+@keyframes highlight { 0% { background-color: rgba(25, 118, 210, 0.2); } 100% { background-color: transparent; } }
+.message-content { padding: 16px; }
+.message-content p { margin: 0 0 12px 0; }
+.message-content p:last-child { margin-bottom: 0; }
+.thinking { background: var(--thinking-bg); border: 1px solid var(--thinking-border); border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 0.9rem; color: var(--thinking-text); }
+.thinking-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #f57c00; margin-bottom: 8px; }
+.thinking p { margin: 8px 0; }
+.assistant-text { margin: 8px 0; }
+.tool-use { background: var(--tool-bg); border: 1px solid var(--tool-border); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-header { font-weight: 600; color: var(--tool-border); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.tool-icon { font-size: 1.1rem; }
+.tool-description { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; font-style: italic; }
+.tool-result { background: var(--tool-result-bg); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-result.tool-error { background: var(--tool-error-bg); }
+.file-tool { border-radius: 8px; padding: 12px; margin: 12px 0; }
+.write-tool { background: linear-gradient(135deg, #e3f2fd 0%, #e8f5e9 100%); border: 1px solid #4caf50; }
+.edit-tool { background: linear-gradient(135deg, #fff3e0 0%, #fce4ec 100%); border: 1px solid #ff9800; }
+.file-tool-header { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.write-header { color: #2e7d32; }
+.edit-header { color: #e65100; }
+.file-tool-icon { font-size: 1rem; }
+.file-tool-path { font-family: monospace; background: rgba(0,0,0,0.08); padding: 2px 8px; border-radius: 4px; }
+.file-tool-fullpath { font-family: monospace; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; word-break: break-all; }
+.file-content { margin: 0; }
+.edit-section { display: flex; margin: 4px 0; border-radius: 4px; overflow: hidden; }
+.edit-label { padding: 8px 12px; font-weight: bold; font-family: monospace; display: flex; align-items: flex-start; }
+.edit-old { background: #fce4ec; }
+.edit-old .edit-label { color: #b71c1c; background: #f8bbd9; }
+.edit-old .edit-content { color: #880e4f; }
+.edit-new { background: #e8f5e9; }
+.edit-new .edit-label { color: #1b5e20; background: #a5d6a7; }
+.edit-new .edit-content { color: #1b5e20; }
+.edit-content { margin: 0; flex: 1; background: transparent; font-size: 0.85rem; }
+.edit-replace-all { font-size: 0.75rem; font-weight: normal; color: var(--text-muted); }
+.write-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #e6f4ea); }
+.edit-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff0e5); }
+.todo-list { background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border: 1px solid #81c784; border-radius: 8px; padding: 12px; margin: 12px 0; }
+.todo-header { font-weight: 600; color: #2e7d32; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.todo-items { list-style: none; margin: 0; padding: 0; }
+.todo-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 0.9rem; }
+.todo-item:last-child { border-bottom: none; }
+.todo-icon { flex-shrink: 0; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 50%; }
+.todo-completed .todo-icon { color: #2e7d32; background: rgba(46, 125, 50, 0.15); }
+.todo-completed .todo-content { color: #558b2f; text-decoration: line-through; }
+.todo-in-progress .todo-icon { color: #f57c00; background: rgba(245, 124, 0, 0.15); }
+.todo-in-progress .todo-content { color: #e65100; font-weight: 500; }
+.todo-pending .todo-icon { color: #757575; background: rgba(0,0,0,0.05); }
+.todo-pending .todo-content { color: #616161; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 8px 0; white-space: pre-wrap; word-wrap: break-word; }
+pre.json { color: #e0e0e0; }
+code { background: rgba(0,0,0,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+pre code { background: none; padding: 0; }
+.user-content { margin: 0; }
+.truncatable { position: relative; }
+.truncatable.truncated .truncatable-content { max-height: 200px; overflow: hidden; }
+.truncatable.truncated::after { content: ''; position: absolute; bottom: 32px; left: 0; right: 0; height: 60px; background: linear-gradient(to bottom, transparent, var(--card-bg)); pointer-events: none; }
+.message.user .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--user-bg)); }
+.message.tool-reply .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.tool-use .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-bg)); }
+.tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-result-bg)); }
+.expand-btn { display: none; width: 100%; padding: 8px 16px; margin-top: 4px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); }
+.expand-btn:hover { background: rgba(0,0,0,0.1); }
+.truncatable.truncated .expand-btn, .truncatable.expanded .expand-btn { display: block; }
+.pagination { display: flex; justify-content: center; gap: 8px; margin: 24px 0; flex-wrap: wrap; }
+.pagination a, .pagination span { padding: 5px 10px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; }
+.pagination a { background: var(--card-bg); color: var(--user-border); border: 1px solid var(--user-border); }
+.pagination a:hover { background: var(--user-bg); }
+.pagination .current { background: var(--user-border); color: white; }
+.pagination .disabled { color: var(--text-muted); border: 1px solid #ddd; }
+.pagination .index-link { background: var(--user-border); color: white; }
+details.continuation { margin-bottom: 16px; }
+details.continuation summary { cursor: pointer; padding: 12px 16px; background: var(--user-bg); border-left: 4px solid var(--user-border); border-radius: 12px; font-weight: 500; color: var(--text-muted); }
+details.continuation summary:hover { background: rgba(25, 118, 210, 0.15); }
+details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom: 0; }
+.index-item { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.index-item a { display: block; text-decoration: none; color: inherit; }
+.index-item a:hover { background: rgba(25, 118, 210, 0.1); }
+.index-item-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.index-item-number { font-weight: 600; color: var(--user-border); }
+.index-item-content { padding: 16px; }
+.index-item-stats { padding: 8px 16px 12px 32px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid rgba(0,0,0,0.06); }
+.index-item-commit { margin-top: 6px; padding: 4px 8px; background: #fff3e0; border-radius: 4px; font-size: 0.85rem; color: #e65100; }
+.index-item-commit code { background: rgba(0,0,0,0.08); padding: 1px 4px; border-radius: 3px; font-size: 0.8rem; margin-right: 6px; }
+.commit-card { margin: 8px 0; padding: 10px 14px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 6px; }
+.commit-card a { text-decoration: none; color: #5d4037; display: block; }
+.commit-card a:hover { color: #e65100; }
+.commit-card-hash { font-family: monospace; color: #e65100; font-weight: 600; margin-right: 8px; }
+.index-commit { margin-bottom: 12px; padding: 10px 16px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.index-commit a { display: block; text-decoration: none; color: inherit; }
+.index-commit a:hover { background: rgba(255, 152, 0, 0.1); margin: -10px -16px; padding: 10px 16px; border-radius: 8px; }
+.index-commit-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 4px; }
+.index-commit-hash { font-family: monospace; color: #e65100; font-weight: 600; }
+.index-commit-msg { color: #5d4037; }
+.index-item-long-text { margin-top: 8px; padding: 12px; background: var(--card-bg); border-radius: 8px; border-left: 3px solid var(--assistant-border); }
+.index-item-long-text .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--card-bg)); }
+.index-item-long-text-content { color: var(--text-color); }
+#search-box { display: none; align-items: center; gap: 8px; }
+#search-box input { padding: 6px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; width: 180px; }
+#search-box button, #modal-search-btn, #modal-close-btn { background: var(--user-border); color: white; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#search-box button:hover, #modal-search-btn:hover { background: #1565c0; }
+#modal-close-btn { background: var(--text-muted); margin-left: 8px; }
+#modal-close-btn:hover { background: #616161; }
+#search-modal[open] { border: none; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); padding: 0; width: 90vw; max-width: 900px; height: 80vh; max-height: 80vh; display: flex; flex-direction: column; }
+#search-modal::backdrop { background: rgba(0,0,0,0.5); }
+.search-modal-header { display: flex; align-items: center; gap: 8px; padding: 16px; border-bottom: 1px solid var(--assistant-border); background: var(--bg-color); border-radius: 12px 12px 0 0; }
+.search-modal-header input { flex: 1; padding: 8px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; }
+#search-status { padding: 8px 16px; font-size: 0.85rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+#search-results { flex: 1; overflow-y: auto; padding: 16px; }
+.search-result { margin-bottom: 16px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.search-result a { display: block; text-decoration: none; color: inherit; }
+.search-result a:hover { background: rgba(25, 118, 210, 0.05); }
+.search-result-page { padding: 6px 12px; background: rgba(0,0,0,0.03); font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+.search-result-content { padding: 12px; }
+.search-result mark { background: #fff59d; padding: 1px 2px; border-radius: 2px; }
+@media (max-width: 600px) { body { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } }
+</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-row">
+            <h1>Claude Code transcript</h1>
+            <div id="search-box">
+                <input type="text" id="search-input" placeholder="Search..." aria-label="Search transcripts">
+                <button id="search-btn" type="button" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+                </button>
+            </div>
+        </div>
+        
+
+<div class="pagination">
+<span class="current">Index</span>
+<span class="disabled">&larr; Prev</span>
+<a href="page-001.html">1</a>
+<a href="page-001.html">Next &rarr;</a>
+</div>
+
+        <p style="color: var(--text-muted); margin-bottom: 24px;">1 prompts · 184 messages · 70 tool calls · 0 commits · 1 pages</p>
+        
+<div class="index-item"><a href="page-001.html#msg-2026-09-13T00-37-01-598Z"><div class="index-item-header"><span class="index-item-number">#1</span><time datetime="2026-09-13T00:37:01.598Z" data-timestamp="2026-09-13T00:37:01.598Z">2026-09-13T00:37:01.598Z</time></div><div class="index-item-content"><p>Second READ-ONLY cleanup review of the Faultline repo at /Users/sohamwaychal/Documents/anthropic (Anthropic take-home; 3 Modal apps: apps/web, services/agent-harness, services/sandbox-env; wire contracts in packages/common/faultline_common/schemas.py). It is a git repo now (HEAD = deb0bb4 on main); use <code>git diff HEAD -- &lt;path&gt;</code> and <code>git log</code> to see what changed recently.</p>
+<p>HARD RULES: do not edit, create, move or delete any repo file; no deploys, no <code>modal</code> commands, no git commands that change state (no commit/stash/checkout/pull). Other Claude sessions are actively editing services/ right now: a lead workflow just landed error classification (error_class/outcome/interruption/run.resumed/episode.sandbox, statuses unevaluated/interrupted) and a real worker-crash resume path, and its proof phase (<code>scripts/prove_interruptions.py</code>) may still be running. You may run <code>services/agent-harness/.venv/bin/python -m pytest services/agent-harness/tests -q -p no:cacheprovider</code> and grep/read freely. Line numbers drift; always give function names.</p>
+<p>SCOPE: services/agent-harness (harness/*.py, migrations, modal_app.py, tools/, tests/, PROVENANCE.md), packages/common/faultline_common, scripts/ (deploy.sh, run_episode_cli.py, smoke_roundtrip.py, fault_proofs.py, export_demo.py, web_check.py, prove_interruptions.py and anything new).</p>
+<p>The first review (runs/20260912T232850Z_cleanup-review/REVIEW.md — read sections B and C for harness/common/scripts) listed these; for EACH, report STILL PRESENT / FIXED / CHANGED with evidence (grep):
+- bugs B1 task_prompt precedence in run_episode; B2 evaluate failure → unevaluated; B3 inferred_fault + mcp_client <em>Timeout</em>→ETIMEDOUT; B4 mutating tool.call not force-flushed before mcp.call; B5 gym_client retries ReadTimeout/RemoteProtocolError/ReadError on POSTs; B6 ephemeral Store boot + exit checkpoint from <code>modal run</code> entrypoints; B7 non-atomic _migrate; B8 unscoped GET /runs + owns() True without id; B9 double checkpoint per run.
+- dead code: EventSink.persist alias; events.TERMINAL_STATUSES + events.now_iso dups; ToolCallResult.as_dict; mcp_client ERROR_CODES missing codes; config.DEFAULT_HARNESS_URL + secret_name(); api.default_spawn; log.Logger.timed/_Timer + log_event re-export; run-status sets duplicated (loop, modal_app, run_episode_cli, check_contract, test_store); stale Dict comments (loop.py, harness/<strong>init</strong>.py); modal_app.import_legacy_runs; RunStore.finish_run alias + store.py docstring (uvicorn harness.api:app); smoke_roundtrip/fault_proofs unused sys.path insert; gym_client {scenarios|items|data} shape handling; test_events_prompts "store index" test; export_demo EVENT_TYPES missing new types + strips sandbox_id; web_check default URL.</p>
+<p>THEN find NEW dead / old / legacy code, especially introduced by the taxonomy + resume work: unused functions, constants, imports, env vars, parameters, compatibility shims (e.g. <code>error_code</code> kept "for compatibility" — check whether apps/web still reads it: grep apps/web/src), duplicated classification logic between harness and sandbox-env or faultline_common, leftovers of superseded approaches (e.g. sleep-based triggers, inferred faults), scripts or tools/ files now superseded by prove_interruptions.py or the verify skill, tests that always pass or pin removed behaviour. For every "unused" claim, grep the WHOLE repo (apps/web, services/sandbox-env, scripts, .claude/skills) to confirm no caller.</p>
+<p>ALSO check docs local to your scope against the code and report drift (do not fix): services/agent-harness/PROVENANCE.md, docstrings/comments that describe behaviour, packages/common schemas.py Event docstring (e.g. episode.reset data keys vs what loop.py emits), and these top-level doc sections: ARCHITECTURE.md §2–§5 and §8, PLAN.md §2.3, §2.9, §2.11, §3.2, §4 V4/V8/V9, docs/error-taxonomy.md, docs/store-notes.md, README "Simulated vs. real failures". For each drift item say which side is right per the code and quote the doc text to change.</p>
+<p>Report pytest pass/fail counts. Output: markdown, sections (1) status of previous items, (2) new dead/legacy code, (3) doc drift, (4) tests. Each item: <code>path</code> + function — what — evidence — recommended action — confidence. Under ~1300 words. Skip style nits.</p></div></a><div class="index-item-stats"><span>43 bash · 27 read</span>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><h1>Faultline second cleanup review: harness, common and scripts (read-only)</h1>
+<p>No files were changed. All 209 harness tests pass, but most of the earlier items are still in the code. The docs lag in the other direction: several still say the taxonomy and resume work is "contract only" or "not yet emitted", though live proofs now pass 65/65.</p>
+<h2>1. Status of previous items</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Status</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B1</td>
+<td><strong>STILL PRESENT</strong></td>
+<td><code>loop.py</code> <code>run_episode_sync</code> reset block: <code>scenario.get("task_prompt") or req.get("task_prompt")</code>, then <code>sink.update(task_prompt=…)</code> overwrites the user's edit.</td>
+</tr>
+<tr>
+<td>B2</td>
+<td><strong>FIXED</strong></td>
+<td>The <code>finally</code> block sets <code>unevaluated</code> when <code>evaluation_status != "ok"</code>. Covered by <code>test_provenance::test_evaluate_failing_makes_the_run_unevaluated_not_ok</code>.</td>
+</tr>
+<tr>
+<td>B3</td>
+<td><strong>PARTLY FIXED</strong></td>
+<td><code>classify_result</code> now checks <code>transport_kind</code> before <code>fault</code>, so client timeouts are real/transport. But <code>loop.inferred_fault</code>/<code>CODE_TO_KIND</code> still attach <code>fault{kind, inferred, origin: injected}</code> whenever <code>observe()</code> fails. A real ENOENT/EACCES is then labelled "simulated". An unobserved ETIMEDOUT is still classified injected. <code>mcp_client.transport_kind_of</code> still maps any <code>*Timeout*</code> (including PoolTimeout) to ETIMEDOUT.</td>
+</tr>
+<tr>
+<td>B4</td>
+<td><strong>STILL PRESENT</strong> (unplanned calls)</td>
+<td><code>tool.call</code> is emitted, then <code>dispatch()</code> runs with no forced flush. Only the <code>harness_plan</code> trigger path calls <code>flush(force=True)</code>. <code>EVENT_FLUSH_S=0.25</code> coalesces the event.</td>
+</tr>
+<tr>
+<td>B5</td>
+<td><strong>STILL PRESENT</strong></td>
+<td><code>gym_client.RETRYABLE</code> includes ReadTimeout, RemoteProtocolError and ReadError. <code>_request</code> applies it to <code>reset()</code> and <code>evaluate()</code> with <code>retries=3</code>.</td>
+</tr>
+<tr>
+<td>B6</td>
+<td><strong>PARTLY FIXED</strong></td>
+<td>Entrypoints now use <code>_deployed_store()</code>. <code>Store.exit</code> still calls <code>checkpoint(force=True)</code> unconditionally, and the ephemeral app still declares <code>Store(min_containers=1)</code>.</td>
+</tr>
+<tr>
+<td>B7</td>
+<td><strong>STILL PRESENT</strong></td>
+<td><code>SqliteStore._migrate</code> still runs <code>executescript</code> and a separate <code>PRAGMA user_version</code>.</td>
+</tr>
+<tr>
+<td>B8</td>
+<td><strong>STILL PRESENT</strong></td>
+<td><code>api.list_runs</code> treats "no header" as unscoped; <code>owns()</code> returns True when <code>user_id</code> is None. Pinned by tests (§4).</td>
+</tr>
+<tr>
+<td>B9</td>
+<td><strong>STILL PRESENT</strong></td>
+<td><code>append_events</code> force-checkpoints on <code>run.finished</code>, then <code>finish_run</code> checkpoints again on the terminal status (<code>resend_all()</code> → <code>update(status=…)</code>).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Dead code from the first review:</strong>
+- <strong>STILL PRESENT, zero callers confirmed by repo-wide grep:</strong>
+  - <code>EventSink.persist</code>, <code>events.TERMINAL_STATUSES</code> and <code>events.now_iso</code> (duplicate)
+  - <code>ToolCallResult.as_dict</code>
+  - <code>config.DEFAULT_HARNESS_URL</code> and <code>secret_name()</code>
+  - <code>api.default_spawn</code> (every <code>create_app</code> caller passes <code>spawn</code>)
+  - <code>Logger.timed</code>/<code>_Timer</code> and the <code>log_event</code> re-export
+  - <code>RunStore.finish_run</code> alias
+  - <code>modal_app.import_legacy_runs</code>
+  - <code>gym_client.scenarios</code> shape handling (sandbox-env returns <code>list[Scenario]</code>)
+- <strong>STILL PRESENT, stale text or leftovers:</strong>
+  - Store docstring still mentions <code>uvicorn harness.api:app</code>.
+  - Dict comment in <code>loop.py</code> near <code>THINKING_CAP</code> ("a run record lives in one Dict value").
+  - <code>harness/__init__.py</code> still says "Two Modal functions".
+  - The sandbox-env <code>sys.path</code> insert in <code>smoke_roundtrip.py</code>/<code>fault_proofs.py</code> is still there.
+  - <code>test_events_prompts::test_index_is_most_recent_first_and_capped</code> is still there.
+- <strong>CHANGED:</strong>
+  - <code>mcp_client.ERROR_CODES</code> gained ESANDBOX/ETRANSPORT/EHARNESS but is still hand-copied, and its docstring still lists six codes.
+  - Run-status sets include the new statuses but are now copied in 7 places.
+  - <code>tools/check_contract.py</code> still checks <code>status in {"ok","error","truncated"}</code>, so it FAILs on <code>interrupted</code>/<code>unevaluated</code> runs.
+- <strong>STILL PRESENT:</strong> <code>export_demo</code> <code>EVENT_TYPES</code> lacks the 3 new types and <code>sanitise</code> still strips <code>sandbox_id</code>. <code>apps/web</code> <code>reducer.ts</code> reads <code>data.sandbox_id</code> (~624, ~858), so a worker-crash replay would fail validation.
+- <strong>FIXED:</strong> <code>web_check</code> default URL is <code>.modal.direct</code>.</p>
+<h2>2. New dead or legacy code</h2>
+<ol>
+<li><strong>Harness fault fallback shim is dead</strong> (<code>config.HARNESS_FAULTS_FALLBACK</code>, <code>harness_faults_for</code>, the loop's <code>source="fallback"</code> branch, env <code>HARNESS_FAULTS_FALLBACK</code>).</li>
+<li>Evidence: sandbox-env now publishes <code>harness_faults</code>, and live evidence <code>runs/20260913T003600Z_interruptions_repeat/worker-crash/events.jsonl</code> (id 2) shows <code>"source": "scenario"</code>.</li>
+<li>Action: delete it and its test. Confidence: high.</li>
+<li><strong>Stale harness-side provenance fallbacks</strong> (<code>classify.normalize_fault</code> + <code>FAULT_DESCRIPTIONS</code>; <code>SANDBOX_LOSS_RE</code> comment "the deployed gym still does [EINTERNAL]").</li>
+<li>The gym already sets origin, layer and description (<code>sandbox_env/mcp_tools.py</code> ~225-248) and returns ESANDBOX live.</li>
+<li>The harness texts also disagree with <code>sandbox_env/provenance.py</code> <code>DESC_*</code> ("refused at the tool boundary" vs "refused before reaching the sandbox"; the staged text differs too).</li>
+<li>Action: move to one module in <code>faultline_common</code> or delete. Keep the regex only for <code>evaluation_error_class</code>. Confidence: high.</li>
+<li><strong>Duplicated grading-rule logic</strong> (<code>loop.MUTATING_RE</code>/<code>is_mutating</code> and <code>interrupts.normalize_path</code>/<code>call_paths</code>, versus <code>sandbox_env/faults.py</code> <code>is_mutating</code>/<code>normalize_token</code>/<code>command_tokens</code>).</li>
+<li>The two sides differ on <code>python -c</code> detection, quoted fragments and <code>/workspace</code>→<code>.</code>. So <code>HarnessFaultPlan.matches</code> and <code>align_ledger</code> can disagree with the ledger.</li>
+<li>Action: share one implementation. Confidence: medium.</li>
+<li><strong>Unused constants and a write-only field:</strong></li>
+<li><code>classify.REAL_ONLY_CODES</code>, <code>FILESYSTEM_CODES</code> and <code>interrupts._LEDGER_TOOLS</code> (a copy of <code>loop.TOOL_NAMES</code>) have 0 uses.</li>
+<li><code>ToolCallResult.transport_error</code> is written everywhere but only tests read it; <code>transport_kind</code> replaced it.</li>
+<li>The <code>duration_ms</code>/<code>attempts</code> parameters of <code>harness_result_data</code> are never passed.</li>
+<li>Action: delete. Confidence: high.</li>
+<li><strong><code>ResumePlan.files</code>, <code>workspace_root</code> and <code>submitted</code> are never read</strong> by <code>run_episode_sync</code>.</li>
+<li>Ignoring <code>submitted</code> hides a missing branch: a worker that dies during <code>evaluate</code> after <code>submit</code> resumes into another model step.</li>
+<li>Action: honour it (skip to evaluate) or drop it. Confidence: medium.</li>
+<li><strong>Sleep-based triggers</strong> (<code>loop.dispatch_and_crash</code>).</li>
+<li>It uses a real <code>time.sleep(after_ms)</code> rather than the injected <code>sleep</code>, and no barrier confirms the write reached the server (CLAUDE.md asks for verified timing).</li>
+<li><code>int(trigger.get("after_ms") or 400)</code> turns a valid <code>after_ms: 0</code> into 400; the <code>transport_abort</code> path does the same.</li>
+<li>Confidence: high.</li>
+<li><strong>Contract fields nothing emits:</strong></li>
+<li><code>episode.reset.attempt</code> is always 1.</li>
+<li><code>episode.sandbox</code> status <code>replaced</code> is never emitted.</li>
+<li>Confidence: high.</li>
+<li><strong><code>tool.result.error_code</code> "compat" field no longer has a reader in apps/web.</strong></li>
+<li>Only the <code>types.ts:408</code> declaration remains; grep of <code>apps/web/src</code>, <code>e2e</code> and the skills finds no consumer.</li>
+<li>It is still read by harness tests and <code>prove_interruptions.case_specimen</code> (legacy events).</li>
+<li>Action: decide whether to keep it for legacy parity; otherwise drop it.</li>
+<li><strong>A run whose retries are exhausted stays <code>running</code> forever.</strong></li>
+<li><code>modal.Retries(max_retries=2)</code> is set, but nothing finalises a run when every worker dies, so its SSE stream never finishes.</li>
+<li>Confidence: medium-high.</li>
+<li><strong><code>tools/check_store.py</code> is referenced nowhere.</strong> Also, its "the run is still terminal" check only accepts <code>{ok, truncated}</code>. Confidence: low priority.</li>
+</ol>
+<h2>3. Doc drift</h2>
+<p>In every item the code is right and the doc should change, unless noted.</p>
+<ul>
+<li><strong><code>schemas.py</code> <code>Event</code> docstring</strong> is missing fields the code emits:</li>
+<li><code>episode.reset</code>: <code>scenario</code>, <code>workspace_root</code> (<code>plan_resume</code> reads both)</li>
+<li><code>run.started</code>: <code>sandbox_env_url</code>, <code>worker_generation</code></li>
+<li><code>tool.call</code>: <code>mutating</code></li>
+<li><code>tool.result</code>: <code>summary</code>, <code>synthetic</code>, <code>reported_to_gym</code></li>
+<li><code>run.finished</code>: <code>worker_generation</code>, <code>interruptions</code></li>
+<li><code>run.resumed</code>: <code>step</code>, <code>dropped_thinking_blocks</code></li>
+<li><code>episode.sandbox</code> lists <code>replaced</code>, which is never sent.</li>
+<li><strong>Other <code>schemas.py</code> text:</strong></li>
+<li><code>RunStatus</code> "interrupted (sandbox gone, worker died, ...)": in code only sandbox loss ends <code>interrupted</code>; a dead worker resumes.</li>
+<li><code>HarnessFault</code> docstring "the request is already at sandbox-env, so the side effect completes" rests on a sleep. The docstring should say so, or the code should add a barrier.</li>
+<li><code>RunRequest</code> lacks <code>task_prompt</code> and <code>harness_faults</code>, both of which <code>_start_run</code> accepts.</li>
+<li><strong><code>PROVENANCE.md</code>:</strong></li>
+<li>"39 live checks, 4 episodes" is out of date: the current script produces 65 checks over 3 default episodes (<code>runs/20260913T003600Z_interruptions_repeat/summary.json</code>).</li>
+<li>"<code>fault</code> iff a fault fired" is not true: inferred faults also appear. Here the code should change (B3).</li>
+<li><strong>ARCHITECTURE.md:</strong></li>
+<li>§5.3 "…not yet emitted" and §5.4 "Status…: contract only… the harness has no crash/resume path" are stale.</li>
+<li>§5.4 also claims <code>attempt</code> "&gt;1 when re-provisioned" and "<code>error_code</code> kept for compatibility", and its <code>run.resumed</code>/<code>run.finished</code> rows are missing fields.</li>
+<li>§3 step 4 "repeat until <code>submit</code>, <code>end_turn</code>, <code>max_steps</code> or an unrecoverable API error" omits sandbox loss → <code>interrupted</code>, skipped grading and resume.</li>
+<li>§5.1 heading "all routes below <code>/scenarios</code> and <code>/health</code> require <code>X-Faultline-User</code>" is wrong for <code>/runs*</code>; the <code>POST /runs</code> body lacks <code>task_prompt?</code> and <code>harness_faults?</code>.</li>
+<li>§5.1 "RunRecord gains three optional fields" is stale.</li>
+<li>§4.5 table omits <code>interruption</code>, <code>run.resumed</code> and <code>episode.sandbox</code>.</li>
+<li>§4.3's double-checkpoint and non-atomic-migration notes are accurate; the code is unfixed.</li>
+<li><strong>PLAN.md:</strong></li>
+<li>§2.3 event list is stale: <code>run.finished {status: ok|error|truncated…}</code>, <code>episode.reset {episode_id, files}</code>, and no provenance fields or new events.</li>
+<li>§2.9.4 "all scoped by <code>X-Faultline-User</code>" is only true when the header is sent (B8).</li>
+<li>§2.11: the "contract only" status, "until the harness crash exists…", and the unchecked checklist including "<code>prove_interruptions.py</code> — not written yet" are stale. The harness and live-proof boxes are done (65/65 twice). The verify-skill box is still open: there is no <code>features/interruptions.md</code>.</li>
+<li>§3.4's claim that <code>web_check</code>'s default URL uses <code>.modal.run</code> is stale.</li>
+<li>§4 V1 "harness 153" should be 209.</li>
+<li>§4 V4 "Open: <code>worker-crash</code>… <code>interrupted</code>": both are now done (<code>r_1b83648dc693</code>, <code>r_ea3204c9e1e7</code>). <code>unevaluated</code> has still not been exercised live.</li>
+<li>§4 V8 is still accurate: all 19 CLI summaries show <code>sse_windows []</code>.</li>
+<li>§4 V9 "Still open: <code>modal volume get</code> cross-check" can close: <code>runs/20260912T230110Z_store/db/inspect.txt</code> exists (integrity ok, 1785 events).</li>
+<li><strong><code>docs/error-taxonomy.md</code>:</strong></li>
+<li>The "contract, not yet implemented" banner is stale.</li>
+<li>It says <code>ErrorClass</code> rides on <code>fault.fired</code>; that event actually carries FaultFired plus origin/layer/description.</li>
+<li><code>episode.sandbox</code> is missing, and the <code>run.resumed</code> fields are incomplete.</li>
+<li><code>HARNESS_FAILURE_LABEL</code> is not in the table.</li>
+<li><code>interrupted</code>'s "no worker resumed it" does not cover the exhausted-retries case, where the run stays <code>running</code>.</li>
+<li><strong><code>docs/store-notes.md</code>:</strong> accurate. Nits: it says "600 events" where <code>inspect.txt</code> now shows 1785, and its "not projected" list omits the new event types.</li>
+<li><strong>README "Simulated vs. real failures":</strong> matches the code (sleep trigger, error-tolerant flushes). Its 39/39 figure is correct for <code>runs/20260913T001500Z_interruptions</code>; newer default runs are 65/65 without transport-abort.</li>
+<li><strong>Docstrings and comments:</strong></li>
+<li><code>gym_client</code> "Connection-level failures are retried": the code also retries read timeouts, and the code is what should change (B5).</li>
+<li><code>config.py</code> "deployed sandbox-env does not publish the field yet" is stale.</li>
+<li><code>modal_app</code> "Smoke: <code>modal run … --scenario</code>" still points at an ephemeral app.</li>
+</ul>
+<h2>4. Tests</h2>
+<p><code>services/agent-harness/.venv/bin/python -m pytest services/agent-harness/tests -p no:cacheprovider</code>: <strong>209 passed, 0 failed</strong>, 2 deprecation warnings.</p>
+<p><strong>Tests that lock in behaviour marked for removal or change:</strong>
+- <code>test_loop::test_inferred_fault_only_for_known_codes</code> (B3)
+- <code>test_provenance::test_classification_table</code>, case "...but with observe() down" → injected (B3)
+- <code>test_provenance::test_the_fallback_only_applies_when_the_gym_published_nothing</code> (§2 item 1)
+- <code>test_api::test_runs_are_scoped_to_the_caller</code> (last two asserts) and <code>test_anonymous_runs_stay_readable_by_any_browser</code> (B8)
+- <code>test_events_prompts::test_index_…</code> duplicates coverage already in <code>test_store</code>/<code>test_api</code></p>
+<p><strong>Other observations:</strong>
+- No always-true (<code>or True</code>) tests in the harness suite.
+- <code>test_worker_crash_kills_the_worker_only_after_the_request_is_dispatched</code> depends on a real 10 ms thread sleep, so there is some flake risk.</p>
+<p><strong>Missing tests:</strong>
+- A mutating <code>tool.call</code> is persisted before dispatch at the production flush interval (B4).
+- Resume after <code>submit</code> (§2 item 5).
+- A run whose retries are exhausted (§2 item 9).</p></div></div><button class="expand-btn">Show more</button></div></div>
+</div></div>
+        
+
+<div class="pagination">
+<span class="current">Index</span>
+<span class="disabled">&larr; Prev</span>
+<a href="page-001.html">1</a>
+<a href="page-001.html">Next &rarr;</a>
+</div>
+
+
+        <dialog id="search-modal">
+            <div class="search-modal-header">
+                <input type="text" id="modal-search-input" placeholder="Search..." aria-label="Search transcripts">
+                <button id="modal-search-btn" type="button" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+                </button>
+                <button id="modal-close-btn" type="button" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                </button>
+            </div>
+            <div id="search-status"></div>
+            <div id="search-results"></div>
+        </dialog>
+        <script>
+(function() {
+    var totalPages = 1;
+    var searchBox = document.getElementById('search-box');
+    var searchInput = document.getElementById('search-input');
+    var searchBtn = document.getElementById('search-btn');
+    var modal = document.getElementById('search-modal');
+    var modalInput = document.getElementById('modal-search-input');
+    var modalSearchBtn = document.getElementById('modal-search-btn');
+    var modalCloseBtn = document.getElementById('modal-close-btn');
+    var searchStatus = document.getElementById('search-status');
+    var searchResults = document.getElementById('search-results');
+
+    if (!searchBox || !modal) return;
+
+    // Hide search on file:// protocol (doesn't work due to CORS restrictions)
+    if (window.location.protocol === 'file:') return;
+
+    // Show search box (progressive enhancement)
+    searchBox.style.display = 'flex';
+
+    // Gist preview support - detect if we're on gisthost.github.io or gistpreview.github.io
+    var hostname = window.location.hostname;
+    var isGistPreview = hostname === 'gisthost.github.io' || hostname === 'gistpreview.github.io';
+    var gistId = null;
+    var gistOwner = null;
+    var gistInfoLoaded = false;
+
+    if (isGistPreview) {
+        // Extract gist ID from URL query string like ?78a436a8a9e7a2e603738b8193b95410/index.html
+        var queryMatch = window.location.search.match(/^\?([a-f0-9]+)/i);
+        if (queryMatch) {
+            gistId = queryMatch[1];
+        }
+    }
+
+    async function loadGistInfo() {
+        if (!isGistPreview || !gistId || gistInfoLoaded) return;
+        try {
+            var response = await fetch('https://api.github.com/gists/' + gistId);
+            if (response.ok) {
+                var info = await response.json();
+                gistOwner = info.owner.login;
+                gistInfoLoaded = true;
+            }
+        } catch (e) {
+            console.error('Failed to load gist info:', e);
+        }
+    }
+
+    function getPageFetchUrl(pageFile) {
+        if (isGistPreview && gistOwner && gistId) {
+            // Use raw gist URL for fetching content
+            return 'https://gist.githubusercontent.com/' + gistOwner + '/' + gistId + '/raw/' + pageFile;
+        }
+        return pageFile;
+    }
+
+    function getPageLinkUrl(pageFile) {
+        if (isGistPreview && gistId) {
+            // Use gistpreview URL format for navigation links
+            return '?' + gistId + '/' + pageFile;
+        }
+        return pageFile;
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function openModal(query) {
+        modalInput.value = query || '';
+        searchResults.innerHTML = '';
+        searchStatus.textContent = '';
+        modal.showModal();
+        modalInput.focus();
+        if (query) {
+            performSearch(query);
+        }
+    }
+
+    function closeModal() {
+        modal.close();
+        // Update URL to remove search fragment, preserving path and query string
+        if (window.location.hash.startsWith('#search=')) {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+    }
+
+    function updateUrlHash(query) {
+        if (query) {
+            // Preserve path and query string when adding hash
+            history.replaceState(null, '', window.location.pathname + window.location.search + '#search=' + encodeURIComponent(query));
+        }
+    }
+
+    function highlightTextNodes(element, searchTerm) {
+        var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+        var nodesToReplace = [];
+
+        while (walker.nextNode()) {
+            var node = walker.currentNode;
+            if (node.nodeValue.toLowerCase().indexOf(searchTerm.toLowerCase()) !== -1) {
+                nodesToReplace.push(node);
+            }
+        }
+
+        nodesToReplace.forEach(function(node) {
+            var text = node.nodeValue;
+            var regex = new RegExp('(' + escapeRegex(searchTerm) + ')', 'gi');
+            var parts = text.split(regex);
+            if (parts.length > 1) {
+                var span = document.createElement('span');
+                parts.forEach(function(part) {
+                    if (part.toLowerCase() === searchTerm.toLowerCase()) {
+                        var mark = document.createElement('mark');
+                        mark.textContent = part;
+                        span.appendChild(mark);
+                    } else {
+                        span.appendChild(document.createTextNode(part));
+                    }
+                });
+                node.parentNode.replaceChild(span, node);
+            }
+        });
+    }
+
+    function fixInternalLinks(element, pageFile) {
+        // Update all internal anchor links to include the page file
+        var links = element.querySelectorAll('a[href^="#"]');
+        links.forEach(function(link) {
+            var href = link.getAttribute('href');
+            link.setAttribute('href', pageFile + href);
+        });
+    }
+
+    function processPage(pageFile, html, query) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var resultsFromPage = 0;
+
+        // Find all message blocks
+        var messages = doc.querySelectorAll('.message');
+        messages.forEach(function(msg) {
+            var text = msg.textContent || '';
+            if (text.toLowerCase().indexOf(query.toLowerCase()) !== -1) {
+                resultsFromPage++;
+
+                // Get the message ID for linking
+                var msgId = msg.id || '';
+                var pageLinkUrl = getPageLinkUrl(pageFile);
+                var link = pageLinkUrl + (msgId ? '#' + msgId : '');
+
+                // Clone the message HTML and highlight matches
+                var clone = msg.cloneNode(true);
+                // Fix internal links to include the page file
+                fixInternalLinks(clone, pageLinkUrl);
+                highlightTextNodes(clone, query);
+
+                var resultDiv = document.createElement('div');
+                resultDiv.className = 'search-result';
+                resultDiv.innerHTML = '<a href="' + link + '">' +
+                    '<div class="search-result-page">' + escapeHtml(pageFile) + '</div>' +
+                    '<div class="search-result-content">' + clone.innerHTML + '</div>' +
+                    '</a>';
+                searchResults.appendChild(resultDiv);
+            }
+        });
+
+        return resultsFromPage;
+    }
+
+    async function performSearch(query) {
+        if (!query.trim()) {
+            searchStatus.textContent = 'Enter a search term';
+            return;
+        }
+
+        updateUrlHash(query);
+        searchResults.innerHTML = '';
+        searchStatus.textContent = 'Searching...';
+
+        // Load gist info if on gistpreview (needed for constructing URLs)
+        if (isGistPreview && !gistInfoLoaded) {
+            searchStatus.textContent = 'Loading gist info...';
+            await loadGistInfo();
+            if (!gistOwner) {
+                searchStatus.textContent = 'Failed to load gist info. Search unavailable.';
+                return;
+            }
+        }
+
+        var resultsFound = 0;
+        var pagesSearched = 0;
+
+        // Build list of pages to fetch
+        var pagesToFetch = [];
+        for (var i = 1; i <= totalPages; i++) {
+            pagesToFetch.push('page-' + String(i).padStart(3, '0') + '.html');
+        }
+
+        searchStatus.textContent = 'Searching...';
+
+        // Process pages in batches of 3, but show results immediately as each completes
+        var batchSize = 3;
+        for (var i = 0; i < pagesToFetch.length; i += batchSize) {
+            var batch = pagesToFetch.slice(i, i + batchSize);
+
+            // Create promises that process results immediately when each fetch completes
+            var promises = batch.map(function(pageFile) {
+                return fetch(getPageFetchUrl(pageFile))
+                    .then(function(response) {
+                        if (!response.ok) throw new Error('Failed to fetch');
+                        return response.text();
+                    })
+                    .then(function(html) {
+                        // Process and display results immediately
+                        var count = processPage(pageFile, html, query);
+                        resultsFound += count;
+                        pagesSearched++;
+                        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + pagesSearched + '/' + totalPages + ' pages...';
+                    })
+                    .catch(function() {
+                        pagesSearched++;
+                        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + pagesSearched + '/' + totalPages + ' pages...';
+                    });
+            });
+
+            // Wait for this batch to complete before starting the next
+            await Promise.all(promises);
+        }
+
+        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + totalPages + ' pages';
+    }
+
+    // Event listeners
+    searchBtn.addEventListener('click', function() {
+        openModal(searchInput.value);
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            openModal(searchInput.value);
+        }
+    });
+
+    modalSearchBtn.addEventListener('click', function() {
+        performSearch(modalInput.value);
+    });
+
+    modalInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            performSearch(modalInput.value);
+        }
+    });
+
+    modalCloseBtn.addEventListener('click', closeModal);
+
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+
+    // Check for #search= in URL on page load
+    if (window.location.hash.startsWith('#search=')) {
+        var query = decodeURIComponent(window.location.hash.substring(8));
+        if (query) {
+            searchInput.value = query;
+            openModal(query);
+        }
+    }
+})();
+        </script>
+    </div>
+    <script>
+document.querySelectorAll('time[data-timestamp]').forEach(function(el) {
+    const timestamp = el.getAttribute('data-timestamp');
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    if (isToday) { el.textContent = timeStr; }
+    else { el.textContent = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + timeStr; }
+});
+document.querySelectorAll('pre.json').forEach(function(el) {
+    let text = el.textContent;
+    text = text.replace(/"([^"]+)":/g, '<span style="color: #ce93d8">"$1"</span>:');
+    text = text.replace(/: "([^"]*)"/g, ': <span style="color: #81d4fa">"$1"</span>');
+    text = text.replace(/: (\d+)/g, ': <span style="color: #ffcc80">$1</span>');
+    text = text.replace(/: (true|false|null)/g, ': <span style="color: #f48fb1">$1</span>');
+    el.innerHTML = text;
+});
+document.querySelectorAll('.truncatable').forEach(function(wrapper) {
+    const content = wrapper.querySelector('.truncatable-content');
+    const btn = wrapper.querySelector('.expand-btn');
+    if (content.scrollHeight > 250) {
+        wrapper.classList.add('truncated');
+        btn.addEventListener('click', function() {
+            if (wrapper.classList.contains('truncated')) { wrapper.classList.remove('truncated'); wrapper.classList.add('expanded'); btn.textContent = 'Show less'; }
+            else { wrapper.classList.remove('expanded'); wrapper.classList.add('truncated'); btn.textContent = 'Show more'; }
+        });
+    }
+});
+</script>
+</body>
+</html>

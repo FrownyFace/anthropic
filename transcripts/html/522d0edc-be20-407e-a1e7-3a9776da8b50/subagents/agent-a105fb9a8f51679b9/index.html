@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code transcript - Index</title>
+    <style>
+:root { --bg-color: #f5f5f5; --card-bg: #ffffff; --user-bg: #e3f2fd; --user-border: #1976d2; --assistant-bg: #f5f5f5; --assistant-border: #9e9e9e; --thinking-bg: #fff8e1; --thinking-border: #ffc107; --thinking-text: #666; --tool-bg: #f3e5f5; --tool-border: #9c27b0; --tool-result-bg: #e8f5e9; --tool-error-bg: #ffebee; --text-color: #212121; --text-muted: #757575; --code-bg: #263238; --code-text: #aed581; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 16px; line-height: 1.6; }
+.container { max-width: 800px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin-bottom: 24px; padding-bottom: 8px; border-bottom: 2px solid var(--user-border); }
+.header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid var(--user-border); padding-bottom: 8px; margin-bottom: 24px; }
+.header-row h1 { border-bottom: none; padding-bottom: 0; margin-bottom: 0; flex: 1; min-width: 200px; }
+.message { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.message.user { background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.message.assistant { background: var(--card-bg); border-left: 4px solid var(--assistant-border); }
+.message.tool-reply { background: #fff8e1; border-left: 4px solid #ff9800; }
+.tool-reply .role-label { color: #e65100; }
+.tool-reply .tool-result { background: transparent; padding: 0; margin: 0; }
+.tool-reply .tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.message-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.role-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.user .role-label { color: var(--user-border); }
+time { color: var(--text-muted); font-size: 0.8rem; }
+.timestamp-link { color: inherit; text-decoration: none; }
+.timestamp-link:hover { text-decoration: underline; }
+.message:target { animation: highlight 2s ease-out; }
+@keyframes highlight { 0% { background-color: rgba(25, 118, 210, 0.2); } 100% { background-color: transparent; } }
+.message-content { padding: 16px; }
+.message-content p { margin: 0 0 12px 0; }
+.message-content p:last-child { margin-bottom: 0; }
+.thinking { background: var(--thinking-bg); border: 1px solid var(--thinking-border); border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 0.9rem; color: var(--thinking-text); }
+.thinking-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #f57c00; margin-bottom: 8px; }
+.thinking p { margin: 8px 0; }
+.assistant-text { margin: 8px 0; }
+.tool-use { background: var(--tool-bg); border: 1px solid var(--tool-border); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-header { font-weight: 600; color: var(--tool-border); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.tool-icon { font-size: 1.1rem; }
+.tool-description { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; font-style: italic; }
+.tool-result { background: var(--tool-result-bg); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-result.tool-error { background: var(--tool-error-bg); }
+.file-tool { border-radius: 8px; padding: 12px; margin: 12px 0; }
+.write-tool { background: linear-gradient(135deg, #e3f2fd 0%, #e8f5e9 100%); border: 1px solid #4caf50; }
+.edit-tool { background: linear-gradient(135deg, #fff3e0 0%, #fce4ec 100%); border: 1px solid #ff9800; }
+.file-tool-header { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.write-header { color: #2e7d32; }
+.edit-header { color: #e65100; }
+.file-tool-icon { font-size: 1rem; }
+.file-tool-path { font-family: monospace; background: rgba(0,0,0,0.08); padding: 2px 8px; border-radius: 4px; }
+.file-tool-fullpath { font-family: monospace; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; word-break: break-all; }
+.file-content { margin: 0; }
+.edit-section { display: flex; margin: 4px 0; border-radius: 4px; overflow: hidden; }
+.edit-label { padding: 8px 12px; font-weight: bold; font-family: monospace; display: flex; align-items: flex-start; }
+.edit-old { background: #fce4ec; }
+.edit-old .edit-label { color: #b71c1c; background: #f8bbd9; }
+.edit-old .edit-content { color: #880e4f; }
+.edit-new { background: #e8f5e9; }
+.edit-new .edit-label { color: #1b5e20; background: #a5d6a7; }
+.edit-new .edit-content { color: #1b5e20; }
+.edit-content { margin: 0; flex: 1; background: transparent; font-size: 0.85rem; }
+.edit-replace-all { font-size: 0.75rem; font-weight: normal; color: var(--text-muted); }
+.write-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #e6f4ea); }
+.edit-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff0e5); }
+.todo-list { background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border: 1px solid #81c784; border-radius: 8px; padding: 12px; margin: 12px 0; }
+.todo-header { font-weight: 600; color: #2e7d32; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.todo-items { list-style: none; margin: 0; padding: 0; }
+.todo-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 0.9rem; }
+.todo-item:last-child { border-bottom: none; }
+.todo-icon { flex-shrink: 0; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 50%; }
+.todo-completed .todo-icon { color: #2e7d32; background: rgba(46, 125, 50, 0.15); }
+.todo-completed .todo-content { color: #558b2f; text-decoration: line-through; }
+.todo-in-progress .todo-icon { color: #f57c00; background: rgba(245, 124, 0, 0.15); }
+.todo-in-progress .todo-content { color: #e65100; font-weight: 500; }
+.todo-pending .todo-icon { color: #757575; background: rgba(0,0,0,0.05); }
+.todo-pending .todo-content { color: #616161; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 8px 0; white-space: pre-wrap; word-wrap: break-word; }
+pre.json { color: #e0e0e0; }
+code { background: rgba(0,0,0,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+pre code { background: none; padding: 0; }
+.user-content { margin: 0; }
+.truncatable { position: relative; }
+.truncatable.truncated .truncatable-content { max-height: 200px; overflow: hidden; }
+.truncatable.truncated::after { content: ''; position: absolute; bottom: 32px; left: 0; right: 0; height: 60px; background: linear-gradient(to bottom, transparent, var(--card-bg)); pointer-events: none; }
+.message.user .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--user-bg)); }
+.message.tool-reply .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.tool-use .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-bg)); }
+.tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-result-bg)); }
+.expand-btn { display: none; width: 100%; padding: 8px 16px; margin-top: 4px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); }
+.expand-btn:hover { background: rgba(0,0,0,0.1); }
+.truncatable.truncated .expand-btn, .truncatable.expanded .expand-btn { display: block; }
+.pagination { display: flex; justify-content: center; gap: 8px; margin: 24px 0; flex-wrap: wrap; }
+.pagination a, .pagination span { padding: 5px 10px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; }
+.pagination a { background: var(--card-bg); color: var(--user-border); border: 1px solid var(--user-border); }
+.pagination a:hover { background: var(--user-bg); }
+.pagination .current { background: var(--user-border); color: white; }
+.pagination .disabled { color: var(--text-muted); border: 1px solid #ddd; }
+.pagination .index-link { background: var(--user-border); color: white; }
+details.continuation { margin-bottom: 16px; }
+details.continuation summary { cursor: pointer; padding: 12px 16px; background: var(--user-bg); border-left: 4px solid var(--user-border); border-radius: 12px; font-weight: 500; color: var(--text-muted); }
+details.continuation summary:hover { background: rgba(25, 118, 210, 0.15); }
+details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom: 0; }
+.index-item { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.index-item a { display: block; text-decoration: none; color: inherit; }
+.index-item a:hover { background: rgba(25, 118, 210, 0.1); }
+.index-item-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.index-item-number { font-weight: 600; color: var(--user-border); }
+.index-item-content { padding: 16px; }
+.index-item-stats { padding: 8px 16px 12px 32px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid rgba(0,0,0,0.06); }
+.index-item-commit { margin-top: 6px; padding: 4px 8px; background: #fff3e0; border-radius: 4px; font-size: 0.85rem; color: #e65100; }
+.index-item-commit code { background: rgba(0,0,0,0.08); padding: 1px 4px; border-radius: 3px; font-size: 0.8rem; margin-right: 6px; }
+.commit-card { margin: 8px 0; padding: 10px 14px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 6px; }
+.commit-card a { text-decoration: none; color: #5d4037; display: block; }
+.commit-card a:hover { color: #e65100; }
+.commit-card-hash { font-family: monospace; color: #e65100; font-weight: 600; margin-right: 8px; }
+.index-commit { margin-bottom: 12px; padding: 10px 16px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.index-commit a { display: block; text-decoration: none; color: inherit; }
+.index-commit a:hover { background: rgba(255, 152, 0, 0.1); margin: -10px -16px; padding: 10px 16px; border-radius: 8px; }
+.index-commit-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 4px; }
+.index-commit-hash { font-family: monospace; color: #e65100; font-weight: 600; }
+.index-commit-msg { color: #5d4037; }
+.index-item-long-text { margin-top: 8px; padding: 12px; background: var(--card-bg); border-radius: 8px; border-left: 3px solid var(--assistant-border); }
+.index-item-long-text .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--card-bg)); }
+.index-item-long-text-content { color: var(--text-color); }
+#search-box { display: none; align-items: center; gap: 8px; }
+#search-box input { padding: 6px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; width: 180px; }
+#search-box button, #modal-search-btn, #modal-close-btn { background: var(--user-border); color: white; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#search-box button:hover, #modal-search-btn:hover { background: #1565c0; }
+#modal-close-btn { background: var(--text-muted); margin-left: 8px; }
+#modal-close-btn:hover { background: #616161; }
+#search-modal[open] { border: none; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); padding: 0; width: 90vw; max-width: 900px; height: 80vh; max-height: 80vh; display: flex; flex-direction: column; }
+#search-modal::backdrop { background: rgba(0,0,0,0.5); }
+.search-modal-header { display: flex; align-items: center; gap: 8px; padding: 16px; border-bottom: 1px solid var(--assistant-border); background: var(--bg-color); border-radius: 12px 12px 0 0; }
+.search-modal-header input { flex: 1; padding: 8px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; }
+#search-status { padding: 8px 16px; font-size: 0.85rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+#search-results { flex: 1; overflow-y: auto; padding: 16px; }
+.search-result { margin-bottom: 16px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.search-result a { display: block; text-decoration: none; color: inherit; }
+.search-result a:hover { background: rgba(25, 118, 210, 0.05); }
+.search-result-page { padding: 6px 12px; background: rgba(0,0,0,0.03); font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+.search-result-content { padding: 12px; }
+.search-result mark { background: #fff59d; padding: 1px 2px; border-radius: 2px; }
+@media (max-width: 600px) { body { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } }
+</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-row">
+            <h1>Claude Code transcript</h1>
+            <div id="search-box">
+                <input type="text" id="search-input" placeholder="Search..." aria-label="Search transcripts">
+                <button id="search-btn" type="button" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+                </button>
+            </div>
+        </div>
+        
+
+<div class="pagination">
+<span class="current">Index</span>
+<span class="disabled">&larr; Prev</span>
+<a href="page-001.html">1</a>
+<a href="page-001.html">Next &rarr;</a>
+</div>
+
+        <p style="color: var(--text-muted); margin-bottom: 24px;">1 prompts · 293 messages · 114 tool calls · 0 commits · 1 pages</p>
+        
+<div class="index-item"><a href="page-001.html#msg-2026-09-13T00-37-36-124Z"><div class="index-item-header"><span class="index-item-number">#1</span><time datetime="2026-09-13T00:37:36.124Z" data-timestamp="2026-09-13T00:37:36.124Z">2026-09-13T00:37:36.124Z</time></div><div class="index-item-content"><p>Second READ-ONLY cleanup review of the Faultline repo at /Users/sohamwaychal/Documents/anthropic (Anthropic take-home; 3 Modal apps; wire contracts in packages/common/faultline_common/schemas.py). It is a git repo (HEAD = deb0bb4 on main); use <code>git diff HEAD -- &lt;path&gt;</code> and <code>git log -p</code> to see recent changes.</p>
+<p>HARD RULES: do not edit, create, move or delete any repo file (do NOT run <code>pnpm build</code>, which writes dist/, or any lint --fix); no deploys, no git commands that change state. Other sessions own and are editing these files: anthropic-4c owns apps/web/src (just applied a cleanup and deployed faultline-web v20), anthropic-ca owns apps/web/e2e + .claude/skills/verify-faultline. You MAY run in apps/web (Node 22: <code>source ~/.nvm/nvm.sh &amp;&amp; nvm use 22 &gt;/dev/null</code>): <code>pnpm exec tsc -p tsconfig.app.json --noEmit</code>, <code>pnpm exec vitest run</code> (writes gitignored .vitest/, acceptable), <code>pnpm exec oxlint</code>. Grep/read freely. Do not run Playwright or hit the deployed site.</p>
+<p>SCOPE: apps/web (src/, e2e/, public/demo, modal_app.py, serve.py, index.html, package.json, vite/ts configs, README.md) and .claude/skills/verify-faultline (SKILL.md, features/<em>.md, helpers/</em>.py).</p>
+<p>The first review (runs/20260912T232850Z_cleanup-review/REVIEW.md sections B18–B25, C apps/web, and section F follow-up log) listed items; the owner reports most fixed. For EACH previous web item report FIXED / STILL PRESENT / KEPT-ON-PURPOSE with evidence. Known keeps: api.ts EVENT_TYPES (registers SSE listeners), me/updateConversation/archiveConversation client methods. Known open: serve.py docstring <code>/?run=</code>, format.ts plural() unreferenced, B25 replay re-export.</p>
+<p>THEN find NEW dead / old / legacy code after that cleanup: unused exports/components/hooks/lib functions/types/CSS tokens/deps in package.json (check every dependency is imported somewhere), files orphaned by the deletions (reliability.*, Timeline, verdict, old playback), tests for deleted code, e2e flows or skill helpers that reference removed UI (verdict strip, Timeline tab, "history unavailable", legacy ?run= routes, harness URL printed in UI — the owner says Modal wording/URLs were removed from the UI and DEFAULT_HARNESS_URL is now ''), label derivations parsing error TEXT instead of structured fields (contract violation), duplicate status/tone helpers (e.g. new src/lib/callStatus.ts and runStatus.ts vs reducer/format/bui components). Also check web types.ts/EVENT_TYPES/RunStatus vs schemas.py now that the backend emits error_class/outcome/interruption/run.resumed/episode.sandbox. For every "unused" claim grep the whole apps/web tree (and .claude/skills for e2e helpers).</p>
+<p>ALSO check docs against the code and report drift (do not fix): apps/web/README.md, apps/web/public/demo/README.md, apps/web/src/components/bui/README.md, .claude/skills/verify-faultline/SKILL.md + features/*.md (descriptions of flows, helpers, commands, what is covered), and top-level ARCHITECTURE.md §6 and §7 (stack, config precedence — is VITE_HARNESS_URL still used? — routes, components, layout diagram, theme, workspace, §7.4 verification), §8 web rows, PLAN.md §2.10, §3.3, §4 V5, README "Try it"/"Verifying it", docs/VIDEO_SCRIPT.md UI steps. Quote the doc text that should change and what it should say per the code.</p>
+<p>Report tsc / vitest / oxlint results. Output: markdown sections (1) status of previous items, (2) new dead/legacy code, (3) doc drift, (4) test health. Each item: <code>path</code> + symbol — what — evidence — action — confidence. Under ~1300 words. Skip style nits.</p></div></a><div class="index-item-stats"><span>70 read · 43 bash · 1 write</span>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>The previous web items are mostly fixed, but the cleanup left one real gap: the backend now sends interruption, resume, sandbox and grading-status events, and the UI stores them but shows none of them. Checks: tsc 0 errors, vitest 187/187 passing, oxlint 0 errors and 12 warnings. <code>apps/web</code> has no changes against HEAD, and I edited no repo files.</p>
+<h2>1. Previous web items</h2>
+<p><strong>FIXED</strong> (checked in the tree):
+- <strong>B18:</strong> <code>transcriptFromMessages</code> now takes an overlay (<code>transcript.ts:149-217</code>), <code>ConversationPage.tsx:141</code> passes evaluation, error and status in, and <code>TranscriptView.tsx:208</code> shows a "Not graded" callout.
+- <strong>B19:</strong> <code>lib/callStatus.ts</code> drives the tool-call status pill and the rail glyph.
+- <strong>B20:</strong> <code>asRunStatus</code> (<code>reducer.ts:58</code>) and <code>outcome_known === true</code> (<code>:538</code>). One path still skips it (N4).
+- <strong>B21:</strong> <code>FaultFiredBadge</code> uses origin plus <code>taxonomyLabel</code>, and <code>faultBlurb</code> depends on origin.
+- <strong>B22:</strong> the badge now reads "read-back seen" and is labelled a heuristic. A related wording problem remains (N2).
+- <strong>B23:</strong> <code>story.ts</code> uses structured fields. The <code>pytest</code> regex only reads the command input to choose wording.
+- <strong>B24:</strong> <code>healthPhase</code> has four states, used by the home hint and the sidebar dot.
+- <strong>Section C:</strong> every listed deletion is gone (<code>reliability.*</code>, <code>WorkspacePanel</code>, old playback and <code>replaying</code>, the four shadcn primitives, <code>FAULT_LABEL</code>/<code>fmtTime</code>, the log helpers, the history-unavailable fallbacks, legacy <code>?c=</code>/<code>?demo=</code> routes, the duplicate color-scheme meta, <code>--color-brand-tint</code>, Timeline, RunPage's second <code>getRun</code>). <code>public/demo/README.md</code> is fixed too.</p>
+<p><strong>KEPT-ON-PURPOSE:</strong> <code>api.ts</code> <code>EVENT_TYPES</code> (it registers the SSE listeners at <code>:520</code>), <code>me</code>/<code>updateConversation</code>/<code>archiveConversation</code> (only tests call them), and the <code>bui/index.ts</code> barrel (4 importers).</p>
+<p><strong>STILL PRESENT:</strong>
+- <strong>B25 (replays):</strong> none of the 4 JSONs has <code>error_class</code> or <code>evaluation_status</code>; <code>lost-ack</code> has no <code>llm.call</code> and its <code>fault.fired</code> has no <code>origin</code>. <code>scripts/export_demo.py</code>:
+  - <code>EVENT_TYPES</code> (<code>:54-68</code>) rejects <code>interruption</code>, <code>run.resumed</code> and <code>episode.sandbox</code>.
+  - <code>sanitise</code> strips <code>sandbox_id</code> (<code>:150</code>), which the reducer's <code>episode.sandbox</code> handler needs.
+  - Result: a worker-crash replay can't be exported. High confidence.
+- <strong><code>serve.py:4-5</code>:</strong> docstring still says "a refresh on <code>/?run=…</code> is fine, but any future path route would 404". High.
+- <strong><code>format.ts:84</code> <code>plural()</code>:</strong> unreferenced, and <code>ThinkingTrace.tsx:40</code> has its own copy. High.
+- <strong><code>useHarness</code> state:</strong> <code>base</code>, <code>source</code>, <code>healthError</code>, <code>refresh</code> and <code>userId</code> have no reader outside the hook. Medium.
+- <strong>A14:</strong> <code>modal_app.py:8,200</code> still print <code>…faultline-web-site.modal.run</code>, which returns 404 for Servers. High.</p>
+<h2>2. New dead / legacy code</h2>
+<ul>
+<li><strong>N1 <code>lib/reducer.ts</code>, state nothing renders (high).</strong> <code>interruptions</code>, <code>resumes</code>, <code>workerGeneration</code>, <code>sandboxEvents</code>, <code>sandboxId/Alive</code>, <code>resetAttempt</code>, <code>evaluationStatus/Error</code>, plus <code>result.attempts</code> and <code>result.sandbox</code>, are folded (<code>:619-871</code>) but have no reader outside the reducer, types and tests. The harness emits them (<code>loop.py:404,610,656,997</code>). A worker-crash run therefore shows no interruption, no "worker 2", no resume and no sandbox loss, even though PLAN §3.3.2 L527 expects it. Action: render them (status strip, story checkpoint, reason in the Not-graded callout) or remove them.</li>
+<li><strong>N2 <code>replay/StoryBar.tsx</code> <code>TONE</code> (high).</strong> The label comes from a generic tone: ok → "recovered", warn → "fault". <code>story.ts</code> sets ok for any pytest exit 0 (<code>:213</code>) and warn for any non-zero exit or <code>truncated</code> (<code>:209</code>, <code>:263</code>). So a step can read "· fault" with no fault fired, or "· recovered" with nothing to recover. Action: give each checkpoint an explicit kind and update e2e F5's <code>/recovered/</code> check.</li>
+<li><strong>N3, grade colours disagree (high).</strong> <code>ScoreRows</code> <code>scoreTone</code> is green at ≥85 and its pill uses <code>evaluation.passed</code>. <code>runStatus.gradeOf</code> only counts a pass when every check passes. A score of 90 shows a green headline next to an amber "graded with failures" badge. Action: have <code>ScoreRows</code> use <code>gradeOf</code>.</li>
+<li><strong>N4 <code>useRunView.ts:140</code> (medium).</strong> The polling <code>onRecord</code> sets <code>status: r.status ?? …</code> without validation and drops <code>error_class</code>, <code>interruptions</code> and <code>worker_generation</code>, which bypasses B20. Action: use <code>asRunStatus</code> or the <code>fromRunRecord</code> merge.</li>
+<li><strong>N5 <code>TranscriptView.tsx:225-229</code> (medium).</strong> The title "finished but could not be graded" is chosen because error text is present, so <code>interrupted</code> runs get it too. It never looks at <code>evaluation_status</code> or <code>error_class</code>.</li>
+<li><strong>N6 <code>lib/story.ts</code> (high).</strong></li>
+<li>It ignores <code>tool.result.outcome</code> and re-derives "unknown", duplicating <code>callStatus.effectiveOutcome</code>.</li>
+<li><code>:141</code> says "the worker really is killed" for every harness fault, including <code>transport_abort</code>, which only cancels the request.</li>
+<li><strong>N7, duplicated rendering (medium).</strong> <code>ThinkingTrace</code> <code>Glyph</code> and <code>ToolCallChips</code> <code>StatusPill</code> have the same icon switch, and both render the same badge trio, so each call's badges show twice when expanded.</li>
+<li><strong>N8, exports only tests use (high):</strong></li>
+<li><code>router.ts</code>: <code>sameRoute</code>, <code>currentRoute</code>.</li>
+<li><code>api.ts</code>: <code>createRun</code> and its request/response types; the UI never calls <code>POST /runs</code>.</li>
+<li><code>api.ts:181-193</code>: the positional <code>HarnessClient(base, fetchImpl)</code> constructor form.</li>
+<li><strong>N9, unread fields and types (low-medium):</strong></li>
+<li><code>CODE_TEXT</code> <code>.title</code>/<code>.verifyHint</code> and <code>CHECK_TEXT</code> <code>.description</code> are never read; the latter duplicates the backend's <code>Scenario.checks[].description</code>.</li>
+<li><code>faults_public</code> is never read.</li>
+<li>Unimported contract mirrors: <code>EpisodeResetData</code>, <code>RunStartedData</code>, <code>RunFinishedData</code>, <code>TurnTextData</code>, <code>TurnThinkingData</code>, <code>LlmCall(Data)</code>, <code>WorkspaceDiffData</code>, <code>ObserveResponse</code>, <code>*Output</code>, <code>FaultPlan</code>.</li>
+<li><strong>N10, stale comments (low):</strong></li>
+<li><code>api.ts:116</code>: "404 … /me, /conversations".</li>
+<li><code>types.ts:593</code>: "once the Store has landed".</li>
+<li><code>App.tsx:16</code>: "/runs/:id … harness without the store".</li>
+<li><code>toolMeta.ts:58</code> and <code>reducer.ts:739</code>: "timeline".</li>
+<li><strong>N11, unused CSS tokens (low):</strong> <code>--color-card-foreground</code> (orphaned when <code>card.tsx</code> was deleted), <code>--color-chart-1..5</code>, <code>--color-sidebar-primary(-foreground)</code>.</li>
+<li><strong>Dependencies:</strong> all 12 runtime deps are imported somewhere; nothing to remove.</li>
+<li><strong>Outside web, but it breaks web behaviour:</strong></li>
+<li>B1 is still present: <code>loop.py:562</code> prefers the scenario's <code>task_prompt</code>, so a prompt edited in the Composer is ignored.</li>
+<li>The <code>schemas.py</code> <code>Event</code> docstring doesn't list <code>episode.reset.data.scenario</code>, which <code>reducer.ts:623</code> depends on.</li>
+</ul>
+<h2>3. Doc drift</h2>
+<ul>
+<li><strong><code>apps/web/README.md</code>:</strong></li>
+<li><code>:26</code> "harness URL from public/config.json": that file's <code>harnessUrl</code> is <code>""</code>; dev uses <code>VITE_HARNESS_URL</code> in <code>.env.development.local</code>.</li>
+<li><code>:56</code> "→ built-in default" should say "→ empty, not configured".</li>
+<li><code>:83</code> "nothing is baked into the bundle" is false for the in-image build (<code>modal_app.py:97</code>).</li>
+<li><strong><code>bui/README.md</code>:</strong></li>
+<li><code>:11</code> ThinkingTrace: add the unknown and not-executed glyphs and <code>ErrorOriginBadge</code>.</li>
+<li><code>:12</code>: drop "the timeline".</li>
+<li><strong><code>SKILL.md</code>:</strong></li>
+<li><code>:3</code>: remove "verdict strip".</li>
+<li><code>:133</code> <code>flows.F3_F4_live_conversation</code>: the runner reports <code>flows.F3</code>, <code>flows.F4</code>, <code>flows.F4b</code>.</li>
+<li><code>:186</code> "page-refresh mid-run asserted in the live test": F4 reloads after the run finishes, not mid-run.</li>
+<li><code>:190</code> "persistence in flight": it's live.</li>
+<li><code>:119</code> localhost base URL: the doctor's <code>config_json</code> check fails on the empty <code>harnessUrl</code>, and F4 needs a harness URL.</li>
+<li><strong><code>features/README.md:48</code>:</strong> remove "verdict strip".</li>
+<li><strong><code>features/web-ui.md</code>:</strong></li>
+<li><code>:4</code>: "ten-second verdict strip" is gone.</li>
+<li><code>:18</code>: <code>reliability.ts</code> is deleted, not "still exists".</li>
+<li><code>:22</code> data-status values: code emits <code>running|pending|ok|error|unknown|not-executed</code>.</li>
+<li><code>:22</code> "Not graded with the taxonomy's reason": the callout text is fixed, and F10 doesn't cover pills.</li>
+<li><code>:28</code> "public/config.json points at the deployed harness": it's empty.</li>
+<li><strong>ARCHITECTURE:</strong></li>
+<li>§5.4 <code>:299</code> "no service emits it yet": the harness emits the new fields and events now.</li>
+<li>§5.4 <code>:305</code> "recovery (harness retries; did the sandbox survive)": not rendered (N1).</li>
+<li>§5.4 <code>:327</code> "UI resolves from the evaluate ledger": <code>callStatus</code> never reads the ledger.</li>
+<li>§7.1/§7.3 "→ default": should be empty.</li>
+<li>§7.3 "<code>/runs/:id</code> = outside a conversation": RunPage redirects to its conversation; the layout also omits the StoryBar and scrubber.</li>
+<li>§8: add <code>VITE_HARNESS_URL</code> to Env; "Web image Node 22 + pnpm build" is wrong for the default prebuilt path, which only copies <code>dist/</code>.</li>
+<li>§10 "editable prompt": contradicted by B1.</li>
+<li><strong>PLAN:</strong></li>
+<li>§2.10.2 <code>:405</code>: still lists <code>--color-brand-tint</code>.</li>
+<li>§2.10.3 <code>:410-414</code>: the "280/420 px" widths and the "recovered when the next call succeeds" rule are outdated (resizable 64/36 split, read-back rule).</li>
+<li>§3.3.0 <code>:509</code>: "Still to do: engines" is done.</li>
+<li>§3.3.1 <code>:520</code>: same image claim as ARCHITECTURE §8.</li>
+<li>§3.3.2 <code>:527</code>: interruption and resume render nowhere yet.</li>
+<li>§3.3.2 <code>:534</code>: says the story reads <code>outcome</code>; it doesn't.</li>
+<li>§4 V1: "184, oxlint 0" is now 187 tests and 12 warnings.</li>
+<li>§4 V5: cite <code>runs/20260913T001550Z_verify_web</code> (PASS 36 with <code>--live</code>, <code>r_cad229163376</code>) and <code>runs/20260913T004506Z_verify_web</code> (PASS 31, 3 skipped, bundle <code>index-CN9D7miW.js</code>); F4b exists now.</li>
+<li>§4 V8: mid-run refresh is still unverified.</li>
+<li><strong>Top-level README:</strong></li>
+<li><code>:108</code> "from public/config.json": dev uses <code>.env.development.local</code>.</li>
+<li><code>:17</code> "not where or when": the scenario table's tooltip shows the harness fault's tool, path and attempt number.</li>
+<li><code>:58-63</code> worker generation 2: the browser doesn't show it.</li>
+<li><strong><code>docs/VIDEO_SCRIPT.md</code>:</strong></li>
+<li><code>:17</code> "(fault badge)" should be "simulated: ack_lost badge plus amber 'no ack' pill".</li>
+<li><code>:20</code> "same run_id in every line": the Logs tab mixes in browser-wide web log lines without a run id.</li>
+</ul>
+<h2>4. Test health</h2>
+<ul>
+<li><code>tsc -p tsconfig.app.json --noEmit</code>: 0 errors.</li>
+<li><code>vitest run</code>: 21 files, 187 passed.</li>
+<li><code>oxlint</code>: 0 errors and 12 warnings, down from 29 (9 only-export-components; set-state-in-effect at <code>use-mobile.ts:14</code> and <code>Composer.tsx:98</code>; incompatible-library at <code>LogsPanel.tsx:55</code>).</li>
+<li>Coverage gaps: no tests for <code>StoryBar</code>, <code>TranscriptView</code>, <code>RunStatusStrip</code> or <code>ScenarioTable</code>, and none for rendering interruption or resume. No e2e flow checks the unknown or not-executed pills.</li>
+</ul></div></div><button class="expand-btn">Show more</button></div></div>
+</div></div>
+        
+
+<div class="pagination">
+<span class="current">Index</span>
+<span class="disabled">&larr; Prev</span>
+<a href="page-001.html">1</a>
+<a href="page-001.html">Next &rarr;</a>
+</div>
+
+
+        <dialog id="search-modal">
+            <div class="search-modal-header">
+                <input type="text" id="modal-search-input" placeholder="Search..." aria-label="Search transcripts">
+                <button id="modal-search-btn" type="button" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+                </button>
+                <button id="modal-close-btn" type="button" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                </button>
+            </div>
+            <div id="search-status"></div>
+            <div id="search-results"></div>
+        </dialog>
+        <script>
+(function() {
+    var totalPages = 1;
+    var searchBox = document.getElementById('search-box');
+    var searchInput = document.getElementById('search-input');
+    var searchBtn = document.getElementById('search-btn');
+    var modal = document.getElementById('search-modal');
+    var modalInput = document.getElementById('modal-search-input');
+    var modalSearchBtn = document.getElementById('modal-search-btn');
+    var modalCloseBtn = document.getElementById('modal-close-btn');
+    var searchStatus = document.getElementById('search-status');
+    var searchResults = document.getElementById('search-results');
+
+    if (!searchBox || !modal) return;
+
+    // Hide search on file:// protocol (doesn't work due to CORS restrictions)
+    if (window.location.protocol === 'file:') return;
+
+    // Show search box (progressive enhancement)
+    searchBox.style.display = 'flex';
+
+    // Gist preview support - detect if we're on gisthost.github.io or gistpreview.github.io
+    var hostname = window.location.hostname;
+    var isGistPreview = hostname === 'gisthost.github.io' || hostname === 'gistpreview.github.io';
+    var gistId = null;
+    var gistOwner = null;
+    var gistInfoLoaded = false;
+
+    if (isGistPreview) {
+        // Extract gist ID from URL query string like ?78a436a8a9e7a2e603738b8193b95410/index.html
+        var queryMatch = window.location.search.match(/^\?([a-f0-9]+)/i);
+        if (queryMatch) {
+            gistId = queryMatch[1];
+        }
+    }
+
+    async function loadGistInfo() {
+        if (!isGistPreview || !gistId || gistInfoLoaded) return;
+        try {
+            var response = await fetch('https://api.github.com/gists/' + gistId);
+            if (response.ok) {
+                var info = await response.json();
+                gistOwner = info.owner.login;
+                gistInfoLoaded = true;
+            }
+        } catch (e) {
+            console.error('Failed to load gist info:', e);
+        }
+    }
+
+    function getPageFetchUrl(pageFile) {
+        if (isGistPreview && gistOwner && gistId) {
+            // Use raw gist URL for fetching content
+            return 'https://gist.githubusercontent.com/' + gistOwner + '/' + gistId + '/raw/' + pageFile;
+        }
+        return pageFile;
+    }
+
+    function getPageLinkUrl(pageFile) {
+        if (isGistPreview && gistId) {
+            // Use gistpreview URL format for navigation links
+            return '?' + gistId + '/' + pageFile;
+        }
+        return pageFile;
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function openModal(query) {
+        modalInput.value = query || '';
+        searchResults.innerHTML = '';
+        searchStatus.textContent = '';
+        modal.showModal();
+        modalInput.focus();
+        if (query) {
+            performSearch(query);
+        }
+    }
+
+    function closeModal() {
+        modal.close();
+        // Update URL to remove search fragment, preserving path and query string
+        if (window.location.hash.startsWith('#search=')) {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+    }
+
+    function updateUrlHash(query) {
+        if (query) {
+            // Preserve path and query string when adding hash
+            history.replaceState(null, '', window.location.pathname + window.location.search + '#search=' + encodeURIComponent(query));
+        }
+    }
+
+    function highlightTextNodes(element, searchTerm) {
+        var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+        var nodesToReplace = [];
+
+        while (walker.nextNode()) {
+            var node = walker.currentNode;
+            if (node.nodeValue.toLowerCase().indexOf(searchTerm.toLowerCase()) !== -1) {
+                nodesToReplace.push(node);
+            }
+        }
+
+        nodesToReplace.forEach(function(node) {
+            var text = node.nodeValue;
+            var regex = new RegExp('(' + escapeRegex(searchTerm) + ')', 'gi');
+            var parts = text.split(regex);
+            if (parts.length > 1) {
+                var span = document.createElement('span');
+                parts.forEach(function(part) {
+                    if (part.toLowerCase() === searchTerm.toLowerCase()) {
+                        var mark = document.createElement('mark');
+                        mark.textContent = part;
+                        span.appendChild(mark);
+                    } else {
+                        span.appendChild(document.createTextNode(part));
+                    }
+                });
+                node.parentNode.replaceChild(span, node);
+            }
+        });
+    }
+
+    function fixInternalLinks(element, pageFile) {
+        // Update all internal anchor links to include the page file
+        var links = element.querySelectorAll('a[href^="#"]');
+        links.forEach(function(link) {
+            var href = link.getAttribute('href');
+            link.setAttribute('href', pageFile + href);
+        });
+    }
+
+    function processPage(pageFile, html, query) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var resultsFromPage = 0;
+
+        // Find all message blocks
+        var messages = doc.querySelectorAll('.message');
+        messages.forEach(function(msg) {
+            var text = msg.textContent || '';
+            if (text.toLowerCase().indexOf(query.toLowerCase()) !== -1) {
+                resultsFromPage++;
+
+                // Get the message ID for linking
+                var msgId = msg.id || '';
+                var pageLinkUrl = getPageLinkUrl(pageFile);
+                var link = pageLinkUrl + (msgId ? '#' + msgId : '');
+
+                // Clone the message HTML and highlight matches
+                var clone = msg.cloneNode(true);
+                // Fix internal links to include the page file
+                fixInternalLinks(clone, pageLinkUrl);
+                highlightTextNodes(clone, query);
+
+                var resultDiv = document.createElement('div');
+                resultDiv.className = 'search-result';
+                resultDiv.innerHTML = '<a href="' + link + '">' +
+                    '<div class="search-result-page">' + escapeHtml(pageFile) + '</div>' +
+                    '<div class="search-result-content">' + clone.innerHTML + '</div>' +
+                    '</a>';
+                searchResults.appendChild(resultDiv);
+            }
+        });
+
+        return resultsFromPage;
+    }
+
+    async function performSearch(query) {
+        if (!query.trim()) {
+            searchStatus.textContent = 'Enter a search term';
+            return;
+        }
+
+        updateUrlHash(query);
+        searchResults.innerHTML = '';
+        searchStatus.textContent = 'Searching...';
+
+        // Load gist info if on gistpreview (needed for constructing URLs)
+        if (isGistPreview && !gistInfoLoaded) {
+            searchStatus.textContent = 'Loading gist info...';
+            await loadGistInfo();
+            if (!gistOwner) {
+                searchStatus.textContent = 'Failed to load gist info. Search unavailable.';
+                return;
+            }
+        }
+
+        var resultsFound = 0;
+        var pagesSearched = 0;
+
+        // Build list of pages to fetch
+        var pagesToFetch = [];
+        for (var i = 1; i <= totalPages; i++) {
+            pagesToFetch.push('page-' + String(i).padStart(3, '0') + '.html');
+        }
+
+        searchStatus.textContent = 'Searching...';
+
+        // Process pages in batches of 3, but show results immediately as each completes
+        var batchSize = 3;
+        for (var i = 0; i < pagesToFetch.length; i += batchSize) {
+            var batch = pagesToFetch.slice(i, i + batchSize);
+
+            // Create promises that process results immediately when each fetch completes
+            var promises = batch.map(function(pageFile) {
+                return fetch(getPageFetchUrl(pageFile))
+                    .then(function(response) {
+                        if (!response.ok) throw new Error('Failed to fetch');
+                        return response.text();
+                    })
+                    .then(function(html) {
+                        // Process and display results immediately
+                        var count = processPage(pageFile, html, query);
+                        resultsFound += count;
+                        pagesSearched++;
+                        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + pagesSearched + '/' + totalPages + ' pages...';
+                    })
+                    .catch(function() {
+                        pagesSearched++;
+                        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + pagesSearched + '/' + totalPages + ' pages...';
+                    });
+            });
+
+            // Wait for this batch to complete before starting the next
+            await Promise.all(promises);
+        }
+
+        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + totalPages + ' pages';
+    }
+
+    // Event listeners
+    searchBtn.addEventListener('click', function() {
+        openModal(searchInput.value);
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            openModal(searchInput.value);
+        }
+    });
+
+    modalSearchBtn.addEventListener('click', function() {
+        performSearch(modalInput.value);
+    });
+
+    modalInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            performSearch(modalInput.value);
+        }
+    });
+
+    modalCloseBtn.addEventListener('click', closeModal);
+
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+
+    // Check for #search= in URL on page load
+    if (window.location.hash.startsWith('#search=')) {
+        var query = decodeURIComponent(window.location.hash.substring(8));
+        if (query) {
+            searchInput.value = query;
+            openModal(query);
+        }
+    }
+})();
+        </script>
+    </div>
+    <script>
+document.querySelectorAll('time[data-timestamp]').forEach(function(el) {
+    const timestamp = el.getAttribute('data-timestamp');
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    if (isToday) { el.textContent = timeStr; }
+    else { el.textContent = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + timeStr; }
+});
+document.querySelectorAll('pre.json').forEach(function(el) {
+    let text = el.textContent;
+    text = text.replace(/"([^"]+)":/g, '<span style="color: #ce93d8">"$1"</span>:');
+    text = text.replace(/: "([^"]*)"/g, ': <span style="color: #81d4fa">"$1"</span>');
+    text = text.replace(/: (\d+)/g, ': <span style="color: #ffcc80">$1</span>');
+    text = text.replace(/: (true|false|null)/g, ': <span style="color: #f48fb1">$1</span>');
+    el.innerHTML = text;
+});
+document.querySelectorAll('.truncatable').forEach(function(wrapper) {
+    const content = wrapper.querySelector('.truncatable-content');
+    const btn = wrapper.querySelector('.expand-btn');
+    if (content.scrollHeight > 250) {
+        wrapper.classList.add('truncated');
+        btn.addEventListener('click', function() {
+            if (wrapper.classList.contains('truncated')) { wrapper.classList.remove('truncated'); wrapper.classList.add('expanded'); btn.textContent = 'Show less'; }
+            else { wrapper.classList.remove('expanded'); wrapper.classList.add('truncated'); btn.textContent = 'Show more'; }
+        });
+    }
+});
+</script>
+</body>
+</html>

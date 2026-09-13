@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code transcript - Index</title>
+    <style>
+:root { --bg-color: #f5f5f5; --card-bg: #ffffff; --user-bg: #e3f2fd; --user-border: #1976d2; --assistant-bg: #f5f5f5; --assistant-border: #9e9e9e; --thinking-bg: #fff8e1; --thinking-border: #ffc107; --thinking-text: #666; --tool-bg: #f3e5f5; --tool-border: #9c27b0; --tool-result-bg: #e8f5e9; --tool-error-bg: #ffebee; --text-color: #212121; --text-muted: #757575; --code-bg: #263238; --code-text: #aed581; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 16px; line-height: 1.6; }
+.container { max-width: 800px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin-bottom: 24px; padding-bottom: 8px; border-bottom: 2px solid var(--user-border); }
+.header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid var(--user-border); padding-bottom: 8px; margin-bottom: 24px; }
+.header-row h1 { border-bottom: none; padding-bottom: 0; margin-bottom: 0; flex: 1; min-width: 200px; }
+.message { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.message.user { background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.message.assistant { background: var(--card-bg); border-left: 4px solid var(--assistant-border); }
+.message.tool-reply { background: #fff8e1; border-left: 4px solid #ff9800; }
+.tool-reply .role-label { color: #e65100; }
+.tool-reply .tool-result { background: transparent; padding: 0; margin: 0; }
+.tool-reply .tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.message-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.role-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.user .role-label { color: var(--user-border); }
+time { color: var(--text-muted); font-size: 0.8rem; }
+.timestamp-link { color: inherit; text-decoration: none; }
+.timestamp-link:hover { text-decoration: underline; }
+.message:target { animation: highlight 2s ease-out; }
+@keyframes highlight { 0% { background-color: rgba(25, 118, 210, 0.2); } 100% { background-color: transparent; } }
+.message-content { padding: 16px; }
+.message-content p { margin: 0 0 12px 0; }
+.message-content p:last-child { margin-bottom: 0; }
+.thinking { background: var(--thinking-bg); border: 1px solid var(--thinking-border); border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 0.9rem; color: var(--thinking-text); }
+.thinking-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #f57c00; margin-bottom: 8px; }
+.thinking p { margin: 8px 0; }
+.assistant-text { margin: 8px 0; }
+.tool-use { background: var(--tool-bg); border: 1px solid var(--tool-border); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-header { font-weight: 600; color: var(--tool-border); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.tool-icon { font-size: 1.1rem; }
+.tool-description { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; font-style: italic; }
+.tool-result { background: var(--tool-result-bg); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-result.tool-error { background: var(--tool-error-bg); }
+.file-tool { border-radius: 8px; padding: 12px; margin: 12px 0; }
+.write-tool { background: linear-gradient(135deg, #e3f2fd 0%, #e8f5e9 100%); border: 1px solid #4caf50; }
+.edit-tool { background: linear-gradient(135deg, #fff3e0 0%, #fce4ec 100%); border: 1px solid #ff9800; }
+.file-tool-header { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.write-header { color: #2e7d32; }
+.edit-header { color: #e65100; }
+.file-tool-icon { font-size: 1rem; }
+.file-tool-path { font-family: monospace; background: rgba(0,0,0,0.08); padding: 2px 8px; border-radius: 4px; }
+.file-tool-fullpath { font-family: monospace; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; word-break: break-all; }
+.file-content { margin: 0; }
+.edit-section { display: flex; margin: 4px 0; border-radius: 4px; overflow: hidden; }
+.edit-label { padding: 8px 12px; font-weight: bold; font-family: monospace; display: flex; align-items: flex-start; }
+.edit-old { background: #fce4ec; }
+.edit-old .edit-label { color: #b71c1c; background: #f8bbd9; }
+.edit-old .edit-content { color: #880e4f; }
+.edit-new { background: #e8f5e9; }
+.edit-new .edit-label { color: #1b5e20; background: #a5d6a7; }
+.edit-new .edit-content { color: #1b5e20; }
+.edit-content { margin: 0; flex: 1; background: transparent; font-size: 0.85rem; }
+.edit-replace-all { font-size: 0.75rem; font-weight: normal; color: var(--text-muted); }
+.write-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #e6f4ea); }
+.edit-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff0e5); }
+.todo-list { background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border: 1px solid #81c784; border-radius: 8px; padding: 12px; margin: 12px 0; }
+.todo-header { font-weight: 600; color: #2e7d32; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.todo-items { list-style: none; margin: 0; padding: 0; }
+.todo-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 0.9rem; }
+.todo-item:last-child { border-bottom: none; }
+.todo-icon { flex-shrink: 0; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 50%; }
+.todo-completed .todo-icon { color: #2e7d32; background: rgba(46, 125, 50, 0.15); }
+.todo-completed .todo-content { color: #558b2f; text-decoration: line-through; }
+.todo-in-progress .todo-icon { color: #f57c00; background: rgba(245, 124, 0, 0.15); }
+.todo-in-progress .todo-content { color: #e65100; font-weight: 500; }
+.todo-pending .todo-icon { color: #757575; background: rgba(0,0,0,0.05); }
+.todo-pending .todo-content { color: #616161; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 8px 0; white-space: pre-wrap; word-wrap: break-word; }
+pre.json { color: #e0e0e0; }
+code { background: rgba(0,0,0,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+pre code { background: none; padding: 0; }
+.user-content { margin: 0; }
+.truncatable { position: relative; }
+.truncatable.truncated .truncatable-content { max-height: 200px; overflow: hidden; }
+.truncatable.truncated::after { content: ''; position: absolute; bottom: 32px; left: 0; right: 0; height: 60px; background: linear-gradient(to bottom, transparent, var(--card-bg)); pointer-events: none; }
+.message.user .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--user-bg)); }
+.message.tool-reply .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.tool-use .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-bg)); }
+.tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-result-bg)); }
+.expand-btn { display: none; width: 100%; padding: 8px 16px; margin-top: 4px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); }
+.expand-btn:hover { background: rgba(0,0,0,0.1); }
+.truncatable.truncated .expand-btn, .truncatable.expanded .expand-btn { display: block; }
+.pagination { display: flex; justify-content: center; gap: 8px; margin: 24px 0; flex-wrap: wrap; }
+.pagination a, .pagination span { padding: 5px 10px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; }
+.pagination a { background: var(--card-bg); color: var(--user-border); border: 1px solid var(--user-border); }
+.pagination a:hover { background: var(--user-bg); }
+.pagination .current { background: var(--user-border); color: white; }
+.pagination .disabled { color: var(--text-muted); border: 1px solid #ddd; }
+.pagination .index-link { background: var(--user-border); color: white; }
+details.continuation { margin-bottom: 16px; }
+details.continuation summary { cursor: pointer; padding: 12px 16px; background: var(--user-bg); border-left: 4px solid var(--user-border); border-radius: 12px; font-weight: 500; color: var(--text-muted); }
+details.continuation summary:hover { background: rgba(25, 118, 210, 0.15); }
+details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom: 0; }
+.index-item { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.index-item a { display: block; text-decoration: none; color: inherit; }
+.index-item a:hover { background: rgba(25, 118, 210, 0.1); }
+.index-item-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.index-item-number { font-weight: 600; color: var(--user-border); }
+.index-item-content { padding: 16px; }
+.index-item-stats { padding: 8px 16px 12px 32px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid rgba(0,0,0,0.06); }
+.index-item-commit { margin-top: 6px; padding: 4px 8px; background: #fff3e0; border-radius: 4px; font-size: 0.85rem; color: #e65100; }
+.index-item-commit code { background: rgba(0,0,0,0.08); padding: 1px 4px; border-radius: 3px; font-size: 0.8rem; margin-right: 6px; }
+.commit-card { margin: 8px 0; padding: 10px 14px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 6px; }
+.commit-card a { text-decoration: none; color: #5d4037; display: block; }
+.commit-card a:hover { color: #e65100; }
+.commit-card-hash { font-family: monospace; color: #e65100; font-weight: 600; margin-right: 8px; }
+.index-commit { margin-bottom: 12px; padding: 10px 16px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.index-commit a { display: block; text-decoration: none; color: inherit; }
+.index-commit a:hover { background: rgba(255, 152, 0, 0.1); margin: -10px -16px; padding: 10px 16px; border-radius: 8px; }
+.index-commit-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 4px; }
+.index-commit-hash { font-family: monospace; color: #e65100; font-weight: 600; }
+.index-commit-msg { color: #5d4037; }
+.index-item-long-text { margin-top: 8px; padding: 12px; background: var(--card-bg); border-radius: 8px; border-left: 3px solid var(--assistant-border); }
+.index-item-long-text .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--card-bg)); }
+.index-item-long-text-content { color: var(--text-color); }
+#search-box { display: none; align-items: center; gap: 8px; }
+#search-box input { padding: 6px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; width: 180px; }
+#search-box button, #modal-search-btn, #modal-close-btn { background: var(--user-border); color: white; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#search-box button:hover, #modal-search-btn:hover { background: #1565c0; }
+#modal-close-btn { background: var(--text-muted); margin-left: 8px; }
+#modal-close-btn:hover { background: #616161; }
+#search-modal[open] { border: none; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); padding: 0; width: 90vw; max-width: 900px; height: 80vh; max-height: 80vh; display: flex; flex-direction: column; }
+#search-modal::backdrop { background: rgba(0,0,0,0.5); }
+.search-modal-header { display: flex; align-items: center; gap: 8px; padding: 16px; border-bottom: 1px solid var(--assistant-border); background: var(--bg-color); border-radius: 12px 12px 0 0; }
+.search-modal-header input { flex: 1; padding: 8px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; }
+#search-status { padding: 8px 16px; font-size: 0.85rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+#search-results { flex: 1; overflow-y: auto; padding: 16px; }
+.search-result { margin-bottom: 16px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.search-result a { display: block; text-decoration: none; color: inherit; }
+.search-result a:hover { background: rgba(25, 118, 210, 0.05); }
+.search-result-page { padding: 6px 12px; background: rgba(0,0,0,0.03); font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+.search-result-content { padding: 12px; }
+.search-result mark { background: #fff59d; padding: 1px 2px; border-radius: 2px; }
+@media (max-width: 600px) { body { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } }
+</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-row">
+            <h1>Claude Code transcript</h1>
+            <div id="search-box">
+                <input type="text" id="search-input" placeholder="Search..." aria-label="Search transcripts">
+                <button id="search-btn" type="button" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+                </button>
+            </div>
+        </div>
+        
+
+<div class="pagination">
+<span class="current">Index</span>
+<span class="disabled">&larr; Prev</span>
+<a href="page-001.html">1</a>
+<a href="page-001.html">Next &rarr;</a>
+</div>
+
+        <p style="color: var(--text-muted); margin-bottom: 24px;">1 prompts · 156 messages · 62 tool calls · 0 commits · 1 pages</p>
+        
+<div class="index-item"><a href="page-001.html#msg-2026-09-12T23-16-50-634Z"><div class="index-item-header"><span class="index-item-number">#1</span><time datetime="2026-09-12T23:16:50.634Z" data-timestamp="2026-09-12T23:16:50.634Z">2026-09-12T23:16:50.634Z</time></div><div class="index-item-content"><p>You are doing a READ-ONLY cleanup review of one part of the Faultline repo at /Users/sohamwaychal/Documents/anthropic (Anthropic Platform SWE take-home: 3 Modal apps — apps/web, services/agent-harness, services/sandbox-env — sharing packages/common/faultline_common/schemas.py).</p>
+<p>HARD RULE: do not edit, create, move, or delete any file in the repo, and do not run deploys, <code>modal</code> commands, or git commands that change state. Other Claude sessions are editing these files right now. You may run the unit tests (<code>services/sandbox-env/.venv/bin/python -m pytest services/sandbox-env/tests -q</code>) and grep/read freely.</p>
+<p>Your scope: <code>services/sandbox-env/</code> — sandbox_env/<em>.py (api, episodes, faults, grader, mcp_tools, paths, scenarios, util, workspace), scenarios/</em>.json and overlays, fixtures/ratelimiter, graders/, modal_app.py, tools/ (lifecycle_proof.py, perf_probe.py), tests/, FAULTS.md, GRADING.md, plus <code>docs/sandbox-env-ops.md</code>.</p>
+<p>Guidance to review against (read the relevant parts first): <code>CLAUDE.md</code> (boundaries), <code>ARCHITECTURE.md</code> §2, §5.2, §5.4, §8, <code>PLAN.md</code> §2.1, §2.2, §2.4, §2.6, §2.7, §2.11, §3.1, <code>docs/error-taxonomy.md</code>, <code>services/sandbox-env/FAULTS.md</code>, <code>services/sandbox-env/GRADING.md</code>.</p>
+<p>Known context: episode state lives in modal.Dict "faultline-episodes"; faults are applied at the tool boundary (missing_file sticky/transient, denied_write, ack_lost); a provenance taxonomy was recently added (error_class origin injected|staged|real + layer + code, ToolOutcome executed|failed|not_executed|unknown, ESANDBOX etc., staged faults_fired, POST /episodes/{id}/interruptions, a worker-crash scenario, safe reap). <code>workspace.py</code> and <code>episodes.py</code> were edited in the last hour, and <code>tools/</code> scripts look like one-off proofs.</p>
+<p>Find, with file:line evidence for each:
+1. Legacy / dead code: unused functions/imports/constants, old code paths superseded by workspace.py or the taxonomy (e.g. string-matched error codes, <code>error_code</code> compatibility fields, pre-taxonomy outcome strings), unused scenario/overlay/grader files, fixtures not referenced by any scenario, tools/ scripts that are one-off or duplicate scripts/ at repo root, done TODOs. For every "unused" claim grep the WHOLE repo (apps/web, services/agent-harness, scripts, .claude/skills) to confirm no caller.
+2. Drift between code and docs: PLAN.md §2.2 tables (routes, tool IO, caps 8KB/32KB, ledger shape, fault plan schema, score formula 60/40), GRADING.md check ids vs grader.py, FAULTS.md vs faults.py/mcp_tools.py behaviour, scenarios table §2.6 vs scenarios/*.json (including worker-crash), Modal sandbox params in §2.4/§8 vs modal_app.py/episodes.py. State which side is right based on the code.
+3. Boundary/correctness violations of CLAUDE.md: fault plan or hidden graders reachable from the sandbox or the agent's tools; secrets in the sandbox; simulated vs staged vs real errors not distinguishable; unknown execution labelled failed; reap able to kill live sandboxes; sleeps assumed to establish fault timing.
+4. Stale or misleading tests (asserting removed behaviour, skipped, duplicative). Report pytest pass/fail counts.</p>
+<p>Output format: a markdown list grouped by the 4 categories. Each item: <code>path:line</code> — what it is — evidence (grep result / quoted line) — recommended action (delete / update doc / update code / keep with reason) — confidence (high/medium/low) — risk of the change. Highest-value, lowest-risk items first. Be concrete; skip style nits. Keep it under ~1200 words.</p></div></a><div class="index-item-stats"><span>31 bash · 31 read</span>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>The main problem is doc drift. The provenance taxonomy (§2.11) is fully written up in <code>schemas.py</code>, <code>FAULTS.md</code>, <code>GRADING.md</code>, <code>docs/error-taxonomy.md</code> and ARCHITECTURE §5.4, but none of it is in the sandbox-env code yet. So the old outcome strings are still the live code path, not dead code. I also found two ways to kill live sandboxes and one grading-integrity gap. I edited nothing in the repo; the one-off checks I ran used an in-memory store and a scratchpad script.</p>
+<h2>1. Legacy / dead code (each "unused" grepped across the whole repo)</h2>
+<ul>
+<li><code>sandbox_env/util.py:27</code> <code>sha256_hex</code>: the only hit is its definition. Delete. High confidence, no risk.</li>
+<li><code>workspace.py:533</code> <code>local_tar_of</code> (and its <code>__all__</code> entry at :601): only the definition. Delete. High, none.</li>
+<li><code>workspace.py:241-246</code>, the helper's <code>cptree</code> op: nothing calls it, and it copies the <code>snapshot</code> op (:226). Delete. High, none.</li>
+<li><code>Workspace.remove</code> (<code>workspace.py:99/395/517</code>) and the helper's <code>rm</code> op (:232): the only <code>.remove(</code> hits are <code>os.remove</code> inside the helper. Delete. High, low.</li>
+<li><code>scenarios.py:138</code> <code>reload_catalogue</code> says "tests only", but no test calls it. <code>__init__.py:17</code> <code>SVC</code> has no users (the harness has its own <code>config.SVC</code>). Delete both. High, none.</li>
+<li><code>grader.py</code>:</li>
+<li>line 25: unused <code>Any</code> import (ruff F401).</li>
+<li>line 403: <code>hasattr(episodes, "now_iso")</code> is always true, because <code>episodes.py:38</code> imports it.</li>
+<li>Simplify both. High, none.</li>
+<li>Stale docstrings:</li>
+<li><code>episodes.py:69</code> mentions <code>python -m sandbox_env</code> dry runs, but there is no <code>__main__.py</code>.</li>
+<li><code>workspace.py:425</code> says <code>FakeWorkspace</code> is used by <code>scripts/</code>; no script imports it.</li>
+<li>Update both. High.</li>
+<li><code>api.py:217</code> <code>_episode_missing</code> handler can't be reached, because every route catches <code>EpisodeNotFound</code> itself. Delete, or keep as a safety net. Low value.</li>
+<li><code>tools/</code>: neither script duplicates <code>scripts/</code> or the verify skill (none of them touch sweep, reap or latency).</li>
+<li><code>perf_probe.py</code> is cited in <code>docs/sandbox-env-ops.md:52</code>.</li>
+<li><code>lifecycle_proof.py</code> is referenced nowhere; it produced <code>runs/20260912T224357Z_lifecycle</code> (17/17).</li>
+<li>Keep both as evidence generators and link <code>lifecycle_proof.py</code> from the ops doc. Note it runs a real <code>reap(keep_active=True)</code> against the shared deployment (L160).</li>
+<li>Duplicate data: <code>graders/gauntlet/*.py</code> are byte-identical to the three per-scenario graders, and <code>overlays/gauntlet/limits.py</code> is identical to <code>overlays/locked-file/limits.py</code>. Point <code>gauntlet.json</code> at the locked-file overlay; keep the grader copies, since <code>hidden_tests</code> takes a single directory. Medium, low. No unused fixtures.</li>
+</ul>
+<h2>2. Drift between code and docs</h2>
+<ul>
+<li><strong>Taxonomy is described but not built.</strong> The docs are ahead of the code:</li>
+<li><code>mcp_tools.py:150-173</code> never sets <code>LedgerEntry.origin</code>, <code>error_code</code> or <code>interrupted</code>.</li>
+<li>A lost sandbox still returns <code>EINTERNAL</code> (<code>mcp_tools.py:148,231,268,301,330</code>); <code>FAULTS.md:30</code> says <code>ESANDBOX</code>.</li>
+<li>The <code>/interruptions</code> route is missing (<code>api.py</code> route map, lines 3-12).</li>
+<li>Checked by running it: a sticky ENOENT gives the row <code>{outcome:error, fault:None, origin:None}</code> and <code>faults_fired == []</code>, but <code>FAULTS.md:16</code> promises a staged entry.</li>
+<li><code>scenarios.py:97-104</code> never fills <code>checks</code>, <code>faults_public</code> or <code>harness_faults</code>.</li>
+<li>The unchecked box at PLAN:446 is accurate. Until the code lands, mark <code>FAULTS.md</code>, <code>GRADING.md:37,57-65</code> and ARCH §5.4:411 as planned. High.</li>
+<li><strong><code>worker-crash.json</code> is half-landed.</strong></li>
+<li>Its <code>harness_faults</code> never reach the public scenario (checked: <code>[]</code>), and the harness has no code that reads them.</li>
+<li>Its plan has no <code>ack_lost</code> fault, so <code>verified_before_rewrite</code> always reports "fault never triggered". A perfect run scores at most <strong>84</strong> (checked).</li>
+<li>Take it out of the catalogue or finish §2.11. High.</li>
+<li><strong><code>read_file</code> truncation doesn't match the description.</strong></li>
+<li>The tool description (<code>mcp_tools.py:382</code>) and PLAN:123 say long content is cut in the middle.</li>
+<li>The helper already cuts at the cap (<code>workspace.py:161</code>; the fake at :460), so <code>truncate_content</code> (<code>mcp_tools.py:280</code>) never does anything.</li>
+<li>Checked: a 40,000-char file comes back as 32,000 chars with no elision marker, and the last 8,000 chars are lost.</li>
+<li>Fix the code. High, low risk.</li>
+<li><strong>PLAN §2.2 is out of date; the code and <code>FAULTS.md</code> are right:</strong></li>
+<li><code>run_command</code> can also get <code>ack_lost</code> (<code>faults.py:242,265</code>).</li>
+<li><code>list_dir</code> never returns ENOENT; missing names are just hidden (<code>faults.py:244</code>).</li>
+<li>The caps are characters, not KB (<code>schemas.py:140</code>).</li>
+<li>Checks have per-check weights, not equal weights (<code>grader.py:372</code>); <code>GRADING.md</code> is right.</li>
+<li>The ops routes <code>GET /episodes</code> and <code>POST /episodes/sweep</code> aren't listed, and ARCH §5.2 still says "Unchanged".</li>
+<li><strong>PLAN §2.6 / §3.1 details:</strong></li>
+<li>"≤3 write attempts" vs ≤4 in <code>grader.py:196</code>.</li>
+<li>Path <code>src/limits.py</code> vs <code>src/ratelimiter/limits.py</code>.</li>
+<li>No <code>worker-crash</code> row, and missing-config's <code>no_thrash</code> check isn't listed.</li>
+<li>The plan is called "seeded", but the seed is stored (<code>episodes.py:200</code>) and never used.</li>
+<li>The <code>decide</code> signature is <code>(plan, hits_remaining…)</code>, not <code>(plan, ledger…)</code>.</li>
+<li>Every §3.1 box is unchecked despite ✅ in §0, and §0 still says 199 tests / 4 scenarios.</li>
+<li><strong>Grading command:</strong> <code>GRADING.md:11</code> leaves out <code>-o addopts=</code>, which <code>grader.py:50-55</code> says is required. Update the doc.</li>
+<li><strong>PLAN §2.4:192</strong> says files go through <code>sb.filesystem.write_text/read_text</code>. The code writes with <code>filesystem.write_bytes</code> and does all reads through the exec'd helper. The Sandbox parameters match (<code>workspace.py:568-577</code>).</li>
+<li><strong>Latency figures:</strong> <code>episodes.py:403</code> and <code>test_lifecycle.py:146</code> claim reset p50 "1.9 s after". The perf runs <code>runs/20260912T230531Z_perf</code> and <code>230704Z_perf</code> show 3134 / 3283 ms, which matches the ops doc (3.3 s). Fix the comments. High.</li>
+<li><strong>Ops doc:35</strong> says the listing is "newest-first", but <code>episodes.py:458</code> truncates to <code>limit</code> in Dict order before sorting.</li>
+</ul>
+<h2>3. Boundary / correctness violations</h2>
+<ol>
+<li><strong>Anyone can kill every live sandbox over HTTP.</strong> <code>api.py:175</code> <code>POST /episodes/sweep?ttl_s=1</code> needs no auth and CORS allows <code>*</code>; checked, it terminated 2 of 2 live episodes. <code>GET /episodes</code> also publishes every episode id, and the <code>X-Faultline-Episode</code> header is the only MCP auth (PLAN §2.7 turned down tokens on the assumption ids are secret). Enforce a minimum <code>ttl_s</code>, and redact or gate the ops routes. High, low risk.</li>
+<li><strong><code>reap</code> can kill live sandboxes</strong> (the "safe reap" box at PLAN:447 is unchecked):</li>
+<li>It kills everything by default (<code>modal_app.py:93</code>), and a bare <code>modal run modal_app.py</code> does the same (:181).</li>
+<li>With <code>--keep-active</code>, a failed lookup spares nothing (:122-125).</li>
+<li><code>active_sandbox_ids</code> only scans the first 200 records, terminated ones included (<code>episodes.py:542,550</code>).</li>
+<li>A sandbox that has been created (<code>episodes.py:184</code>) but not yet saved (:214) isn't spared.</li>
+<li><code>SKILL.md:127</code> needs updating with any fix. High, medium risk.</li>
+<li><strong>The agent's files can reach the hidden-test run.</strong></li>
+<li><code>.faultline_eval</code> is in <code>SKIP_DIRS</code> (<code>workspace.py:37</code>), so anything the agent writes there doesn't show in observe.</li>
+<li><code>grader.py:331</code> uploads into that directory without clearing it, so an agent-written <code>conftest.py</code> there would load; so would a root <code>conftest.py</code> or <code>pytest.ini</code>.</li>
+<li>The directory name is readable in <code>/opt/faultline_helper.py</code>.</li>
+<li>Skipped tests aren't counted (<code>grader.py:290</code>).</li>
+<li>Fix: clear the directory before upload, add <code>--confcutdir</code>, and assert the expected number of hidden tests. Medium (not seen exploited), low risk.</li>
+<li><strong>Unknown execution is recorded as failed.</strong></li>
+<li>A <code>WorkspaceError</code> after dispatch (<code>workspace.py:295-303</code>), or a command timeout (<code>mcp_tools.py:241</code>), becomes <code>outcome:error</code> with <code>EINTERNAL</code>.</li>
+<li>The grader counts that as a plain failure (<code>grader.py:84</code>), not as maybe-applied.</li>
+<li>Timeout detection is string matching (<code>workspace.py:298</code>). Medium-high.</li>
+<li><strong>State is persisted after side effects, with an unlocked read-modify-write.</strong></li>
+<li><code>record()</code> runs after the write <em>and</em> after the 3 s <code>ack_lost</code> sleep (<code>mcp_tools.py:206-207</code>).</li>
+<li>A retry or resumed worker arriving in that window can fire <code>ack_lost</code> again and lose a ledger row.</li>
+<li>If the container dies, the write has landed but no ledger row exists.</li>
+<li>Fix: persist a pending row before executing. Medium.</li>
+<li><strong>Sleep assumed to set fault timing.</strong> <code>worker-crash.json</code> <code>after_ms: 400</code> assumes the write has landed, but <code>write_file</code> p50 is 1123 ms (ops doc:63). Unverified. Medium.</li>
+<li><strong>A sandbox lost during grading becomes a low score, not an ungraded run.</strong> <code>grader.py:343</code> and <code>:119</code> swallow the <code>WorkspaceError</code>, so the check reads "does not exist". Medium.</li>
+<li><strong>Observe on a terminated episode</strong> returns the baseline marked "unchanged" (<code>episodes.py:262-271</code>), which hides the agent's edits. Low-medium.</li>
+</ol>
+<p>No secret or fault-plan leak into the sandbox found (<code>workspace.py:338,568</code>; <code>episodes.py:131</code>).</p>
+<h2>4. Tests</h2>
+<ul>
+<li><strong>225 passed, 0 failed, 0 skipped.</strong> The summary line doesn't print: the <code>-q</code> in <code>pyproject.toml</code> addopts plus my <code>-q</code> makes <code>-qq</code>, so I counted the progress dots. There is one <code>PytestCollectionWarning</code> for <code>TestsResult</code>.</li>
+<li>Assertions that always pass: <code>test_mcp.py:231</code> and <code>test_episodes.py:120</code> both end in <code>… or True</code>. Fix or delete. High.</li>
+<li>Duplicate: <code>test_episodes.py:60</code> is the same case as <code>test_lifecycle.py:41</code>. Delete one. High.</li>
+<li>These pin behaviour the docs say is gone: <code>test_mcp.py:240</code> (sticky <code>fault is None</code>) and <code>test_mcp.py:327</code> (terminated episode returns <code>EINVAL</code>, not <code>ESANDBOX</code>). Update them together with §2.11.</li>
+<li>Missing tests: public <code>harness_faults</code>/<code>checks</code>, <code>read_file</code> over the 32,000-char cap, the sweep <code>ttl_s</code> floor, and reap's 200-record spare-set limit. <code>test_scenarios.py:47</code> passes trivially for <code>worker-crash</code>.</li>
+</ul></div></div><button class="expand-btn">Show more</button></div></div>
+</div></div>
+        
+
+<div class="pagination">
+<span class="current">Index</span>
+<span class="disabled">&larr; Prev</span>
+<a href="page-001.html">1</a>
+<a href="page-001.html">Next &rarr;</a>
+</div>
+
+
+        <dialog id="search-modal">
+            <div class="search-modal-header">
+                <input type="text" id="modal-search-input" placeholder="Search..." aria-label="Search transcripts">
+                <button id="modal-search-btn" type="button" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+                </button>
+                <button id="modal-close-btn" type="button" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                </button>
+            </div>
+            <div id="search-status"></div>
+            <div id="search-results"></div>
+        </dialog>
+        <script>
+(function() {
+    var totalPages = 1;
+    var searchBox = document.getElementById('search-box');
+    var searchInput = document.getElementById('search-input');
+    var searchBtn = document.getElementById('search-btn');
+    var modal = document.getElementById('search-modal');
+    var modalInput = document.getElementById('modal-search-input');
+    var modalSearchBtn = document.getElementById('modal-search-btn');
+    var modalCloseBtn = document.getElementById('modal-close-btn');
+    var searchStatus = document.getElementById('search-status');
+    var searchResults = document.getElementById('search-results');
+
+    if (!searchBox || !modal) return;
+
+    // Hide search on file:// protocol (doesn't work due to CORS restrictions)
+    if (window.location.protocol === 'file:') return;
+
+    // Show search box (progressive enhancement)
+    searchBox.style.display = 'flex';
+
+    // Gist preview support - detect if we're on gisthost.github.io or gistpreview.github.io
+    var hostname = window.location.hostname;
+    var isGistPreview = hostname === 'gisthost.github.io' || hostname === 'gistpreview.github.io';
+    var gistId = null;
+    var gistOwner = null;
+    var gistInfoLoaded = false;
+
+    if (isGistPreview) {
+        // Extract gist ID from URL query string like ?78a436a8a9e7a2e603738b8193b95410/index.html
+        var queryMatch = window.location.search.match(/^\?([a-f0-9]+)/i);
+        if (queryMatch) {
+            gistId = queryMatch[1];
+        }
+    }
+
+    async function loadGistInfo() {
+        if (!isGistPreview || !gistId || gistInfoLoaded) return;
+        try {
+            var response = await fetch('https://api.github.com/gists/' + gistId);
+            if (response.ok) {
+                var info = await response.json();
+                gistOwner = info.owner.login;
+                gistInfoLoaded = true;
+            }
+        } catch (e) {
+            console.error('Failed to load gist info:', e);
+        }
+    }
+
+    function getPageFetchUrl(pageFile) {
+        if (isGistPreview && gistOwner && gistId) {
+            // Use raw gist URL for fetching content
+            return 'https://gist.githubusercontent.com/' + gistOwner + '/' + gistId + '/raw/' + pageFile;
+        }
+        return pageFile;
+    }
+
+    function getPageLinkUrl(pageFile) {
+        if (isGistPreview && gistId) {
+            // Use gistpreview URL format for navigation links
+            return '?' + gistId + '/' + pageFile;
+        }
+        return pageFile;
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function openModal(query) {
+        modalInput.value = query || '';
+        searchResults.innerHTML = '';
+        searchStatus.textContent = '';
+        modal.showModal();
+        modalInput.focus();
+        if (query) {
+            performSearch(query);
+        }
+    }
+
+    function closeModal() {
+        modal.close();
+        // Update URL to remove search fragment, preserving path and query string
+        if (window.location.hash.startsWith('#search=')) {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+    }
+
+    function updateUrlHash(query) {
+        if (query) {
+            // Preserve path and query string when adding hash
+            history.replaceState(null, '', window.location.pathname + window.location.search + '#search=' + encodeURIComponent(query));
+        }
+    }
+
+    function highlightTextNodes(element, searchTerm) {
+        var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+        var nodesToReplace = [];
+
+        while (walker.nextNode()) {
+            var node = walker.currentNode;
+            if (node.nodeValue.toLowerCase().indexOf(searchTerm.toLowerCase()) !== -1) {
+                nodesToReplace.push(node);
+            }
+        }
+
+        nodesToReplace.forEach(function(node) {
+            var text = node.nodeValue;
+            var regex = new RegExp('(' + escapeRegex(searchTerm) + ')', 'gi');
+            var parts = text.split(regex);
+            if (parts.length > 1) {
+                var span = document.createElement('span');
+                parts.forEach(function(part) {
+                    if (part.toLowerCase() === searchTerm.toLowerCase()) {
+                        var mark = document.createElement('mark');
+                        mark.textContent = part;
+                        span.appendChild(mark);
+                    } else {
+                        span.appendChild(document.createTextNode(part));
+                    }
+                });
+                node.parentNode.replaceChild(span, node);
+            }
+        });
+    }
+
+    function fixInternalLinks(element, pageFile) {
+        // Update all internal anchor links to include the page file
+        var links = element.querySelectorAll('a[href^="#"]');
+        links.forEach(function(link) {
+            var href = link.getAttribute('href');
+            link.setAttribute('href', pageFile + href);
+        });
+    }
+
+    function processPage(pageFile, html, query) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var resultsFromPage = 0;
+
+        // Find all message blocks
+        var messages = doc.querySelectorAll('.message');
+        messages.forEach(function(msg) {
+            var text = msg.textContent || '';
+            if (text.toLowerCase().indexOf(query.toLowerCase()) !== -1) {
+                resultsFromPage++;
+
+                // Get the message ID for linking
+                var msgId = msg.id || '';
+                var pageLinkUrl = getPageLinkUrl(pageFile);
+                var link = pageLinkUrl + (msgId ? '#' + msgId : '');
+
+                // Clone the message HTML and highlight matches
+                var clone = msg.cloneNode(true);
+                // Fix internal links to include the page file
+                fixInternalLinks(clone, pageLinkUrl);
+                highlightTextNodes(clone, query);
+
+                var resultDiv = document.createElement('div');
+                resultDiv.className = 'search-result';
+                resultDiv.innerHTML = '<a href="' + link + '">' +
+                    '<div class="search-result-page">' + escapeHtml(pageFile) + '</div>' +
+                    '<div class="search-result-content">' + clone.innerHTML + '</div>' +
+                    '</a>';
+                searchResults.appendChild(resultDiv);
+            }
+        });
+
+        return resultsFromPage;
+    }
+
+    async function performSearch(query) {
+        if (!query.trim()) {
+            searchStatus.textContent = 'Enter a search term';
+            return;
+        }
+
+        updateUrlHash(query);
+        searchResults.innerHTML = '';
+        searchStatus.textContent = 'Searching...';
+
+        // Load gist info if on gistpreview (needed for constructing URLs)
+        if (isGistPreview && !gistInfoLoaded) {
+            searchStatus.textContent = 'Loading gist info...';
+            await loadGistInfo();
+            if (!gistOwner) {
+                searchStatus.textContent = 'Failed to load gist info. Search unavailable.';
+                return;
+            }
+        }
+
+        var resultsFound = 0;
+        var pagesSearched = 0;
+
+        // Build list of pages to fetch
+        var pagesToFetch = [];
+        for (var i = 1; i <= totalPages; i++) {
+            pagesToFetch.push('page-' + String(i).padStart(3, '0') + '.html');
+        }
+
+        searchStatus.textContent = 'Searching...';
+
+        // Process pages in batches of 3, but show results immediately as each completes
+        var batchSize = 3;
+        for (var i = 0; i < pagesToFetch.length; i += batchSize) {
+            var batch = pagesToFetch.slice(i, i + batchSize);
+
+            // Create promises that process results immediately when each fetch completes
+            var promises = batch.map(function(pageFile) {
+                return fetch(getPageFetchUrl(pageFile))
+                    .then(function(response) {
+                        if (!response.ok) throw new Error('Failed to fetch');
+                        return response.text();
+                    })
+                    .then(function(html) {
+                        // Process and display results immediately
+                        var count = processPage(pageFile, html, query);
+                        resultsFound += count;
+                        pagesSearched++;
+                        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + pagesSearched + '/' + totalPages + ' pages...';
+                    })
+                    .catch(function() {
+                        pagesSearched++;
+                        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + pagesSearched + '/' + totalPages + ' pages...';
+                    });
+            });
+
+            // Wait for this batch to complete before starting the next
+            await Promise.all(promises);
+        }
+
+        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + totalPages + ' pages';
+    }
+
+    // Event listeners
+    searchBtn.addEventListener('click', function() {
+        openModal(searchInput.value);
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            openModal(searchInput.value);
+        }
+    });
+
+    modalSearchBtn.addEventListener('click', function() {
+        performSearch(modalInput.value);
+    });
+
+    modalInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            performSearch(modalInput.value);
+        }
+    });
+
+    modalCloseBtn.addEventListener('click', closeModal);
+
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+
+    // Check for #search= in URL on page load
+    if (window.location.hash.startsWith('#search=')) {
+        var query = decodeURIComponent(window.location.hash.substring(8));
+        if (query) {
+            searchInput.value = query;
+            openModal(query);
+        }
+    }
+})();
+        </script>
+    </div>
+    <script>
+document.querySelectorAll('time[data-timestamp]').forEach(function(el) {
+    const timestamp = el.getAttribute('data-timestamp');
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    if (isToday) { el.textContent = timeStr; }
+    else { el.textContent = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + timeStr; }
+});
+document.querySelectorAll('pre.json').forEach(function(el) {
+    let text = el.textContent;
+    text = text.replace(/"([^"]+)":/g, '<span style="color: #ce93d8">"$1"</span>:');
+    text = text.replace(/: "([^"]*)"/g, ': <span style="color: #81d4fa">"$1"</span>');
+    text = text.replace(/: (\d+)/g, ': <span style="color: #ffcc80">$1</span>');
+    text = text.replace(/: (true|false|null)/g, ': <span style="color: #f48fb1">$1</span>');
+    el.innerHTML = text;
+});
+document.querySelectorAll('.truncatable').forEach(function(wrapper) {
+    const content = wrapper.querySelector('.truncatable-content');
+    const btn = wrapper.querySelector('.expand-btn');
+    if (content.scrollHeight > 250) {
+        wrapper.classList.add('truncated');
+        btn.addEventListener('click', function() {
+            if (wrapper.classList.contains('truncated')) { wrapper.classList.remove('truncated'); wrapper.classList.add('expanded'); btn.textContent = 'Show less'; }
+            else { wrapper.classList.remove('expanded'); wrapper.classList.add('truncated'); btn.textContent = 'Show more'; }
+        });
+    }
+});
+</script>
+</body>
+</html>
