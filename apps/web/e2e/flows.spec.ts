@@ -56,6 +56,7 @@ const rowFor = (page: Page, scenarioId: string) =>
 test.describe('web product flows', () => {
   test('F1 web-landing: headline, what-goes-wrong list, try-it steps, centered composer, six-column scenario table, no health card', async ({ page }, info) => {
     await gotoHome(page)
+    await expect(page.locator('[data-slot=kicker]')).toContainText('Theme 3: Systems & Reliability')
     await expect(page.getByRole('list', { name: 'What goes wrong' }).getByRole('listitem')).toHaveCount(4)
     await expect(page.getByRole('list', { name: 'Try it in 60 seconds' }).getByRole('listitem')).toHaveCount(4)
     await expect(promptBox(page)).toBeVisible()
