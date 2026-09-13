@@ -226,6 +226,19 @@ test.describe('web product flows', () => {
     await expect(page.getByText(/Could not load this run/)).toBeVisible({ timeout: 60_000 })
     await expect(page.getByText(/Provisioning the sandbox/)).toHaveCount(0)
     await shot(page, info, 'F10_unknown_run')
+    // status pills come from structured fields only: in the lost-ack replay the write whose
+    // acknowledgement was withheld is "no ack" in the unknown tone, never a red failure.
+    await page.goto('/replay/lost-ack')
+    await expect(page.getByLabel('Replay controls').getByRole('button', { name: 'Restart replay' })).toBeVisible({ timeout: 90_000 })
+    const step = page.locator('section[aria-label^="Step "]', { hasText: /unknown/ }).first()
+    await expect(step).toBeVisible()
+    const collapsed = step.locator('[aria-expanded="false"]').first()
+    if (await collapsed.count()) await collapsed.click()
+    const pill = step.locator('[data-status="unknown"]').first()
+    await expect(pill).toContainText(/no ack/)
+    await expect(step.locator('[data-status="error"]')).toHaveCount(0)
+    await expect(page.locator('[data-status="ok"]').first()).toBeVisible()
+    await shot(page, info, 'F10_no_ack_pill')
   })
 
   test('F11 web-sidebar: collapses to icons and back', async ({ page }, info) => {

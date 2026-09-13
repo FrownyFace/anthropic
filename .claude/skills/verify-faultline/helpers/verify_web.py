@@ -109,6 +109,20 @@ def demo_ids() -> list[str]:
     return re.findall(r"id:\s*'([a-z0-9-]+)'", block)
 
 
+def dev_harness_url() -> tuple[str, str]:
+    """Harness URL for a dev-server target: HARNESS_URL env, else VITE_HARNESS_URL from apps/web/.env.development.local."""
+    env = os.environ.get("HARNESS_URL", "").strip().rstrip("/")
+    if env:
+        return env, "HARNESS_URL env"
+    env_file = WEB / ".env.development.local"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            m = re.match(r"\s*VITE_HARNESS_URL\s*=\s*['\"]?([^'\"\s#]+)", line)
+            if m:
+                return m.group(1).rstrip("/"), str(env_file.relative_to(REPO))
+    return "", "(none: set VITE_HARNESS_URL in apps/web/.env.development.local or HARNESS_URL)"
+
+
 def local_bundle() -> str | None:
     js = sorted(glob.glob(str(WEB / "dist" / "assets" / "index-*.js")))
     return Path(js[-1]).name if js else None
@@ -149,8 +163,12 @@ def doctor(ev: Evidence, base: str) -> None:
         pass
     ev.write_output("config.json", body)
     harness = str(cfg.get("harnessUrl", "")).rstrip("/")
-    ev.meta["harness_url"] = harness
-    ev.check("http", "config_json", status == 200 and harness.startswith("https://"), f"harnessUrl={harness or '(missing)'}")
+    source = "config.json"
+    if not harness and not deployed:
+        # public/config.json ships an empty harnessUrl; a Vite dev server takes it from the env file.
+        harness, source = dev_harness_url()
+    ev.meta["harness_url"], ev.meta["harness_url_source"] = harness, source
+    ev.check("http", "config_json", status == 200 and harness.startswith("https://"), f"harnessUrl={harness or '(missing)'} ({source})")
     ev.check("http", "config_no_store", ("no-store" in hdrs.get("cache-control", "")) if deployed else None, hdrs.get("cache-control", "(none)") if deployed else "dev server")
     if harness:
         status, hdrs, body = http(ev, "GET", f"{harness}/health")

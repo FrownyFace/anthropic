@@ -1,6 +1,6 @@
 ---
 name: verify-faultline
-description: Drive the deployed Faultline backend (sandbox-env gym + MCP shell tools on Modal, agent-harness live episodes) the way the agent does, exercise the injected faults, read the actual workspace files back, cross-check the grader, AND drive the deployed web UI (apps/web) through a real Chrome with Playwright across the user product flows (landing, composer, live run → conversation, persisted transcript, replays, verdict strip, workspace, identity, theme, failure modes); keep evidence under runs/<ts>_verify/ and runs/<ts>_verify_web/. Use it after any change to services/*, packages/common, scenarios, graders or apps/web, before claiming a run or a flow "works", and before submission.
+description: Drive the deployed Faultline backend (sandbox-env gym + MCP shell tools on Modal, agent-harness live episodes) the way the agent does, exercise the injected faults, read the actual workspace files back, cross-check the grader, AND drive the deployed web UI (apps/web) through a real Chrome with Playwright across the user product flows (landing, composer, live run → conversation, persisted transcript, replays with their plain-English story bar, workspace, identity, theme, failure modes, sidebar); keep evidence under runs/<ts>_verify/ and runs/<ts>_verify_web/. Use it after any change to services/*, packages/common, scenarios, graders or apps/web, before claiming a run or a flow "works", and before submission.
 ---
 
 # Verify Faultline (backend flow + browser flow)
@@ -115,7 +115,9 @@ python3 .claude/skills/verify-faultline/helpers/verify_web.py
 # plus a real run started from the table and followed to the persisted transcript (≈+2–4 min, one Haiku episode)
 python3 .claude/skills/verify-faultline/helpers/verify_web.py --live
 
-# against a local dev server instead of the deployment
+# against a local dev server instead of the deployment (deployment-only http.* checks are skipped;
+# public/config.json ships an empty harnessUrl, so the runner takes the harness from
+# apps/web/.env.development.local VITE_HARNESS_URL, or from HARNESS_URL / --harness-url)
 python3 .claude/skills/verify-faultline/helpers/verify_web.py --base-url http://localhost:5173
 ```
 
@@ -130,8 +132,8 @@ Evidence goes to `runs/<UTC ts>_verify_web/`: `verification.json` (pass/fail per
 `flows.<id>` check, overall), `playwright.json` (raw reporter), `screens/<flow>.png` (full-page
 screenshot per flow), `artifacts/` (traces + screenshots of failures), `outputs/*.json` (HTTP probe
 bodies, and `conversation.json` for `--live`), `manifest.json` (written last). Exit 0 only when every
-check passes; a skipped live test is reported as `flows.F3_F4_live_conversation = skipped`, never as
-a pass. Cleanup: the runner creates nothing on the backend except (with `--live`) one conversation
+check passes; without `--live` the live tests are reported as `flows.F3`, `flows.F4`, `flows.F4b` =
+`skipped`, never as a pass. Cleanup: the runner creates nothing on the backend except (with `--live`) one conversation
 and one run under a throw-away browser identity, which it leaves as evidence.
 
 ## Evidence
@@ -183,14 +185,17 @@ output, the read-back changelog, or `scores.json` are missing.
 
 ## Known gaps (tracked in PLAN.md, not claimed here)
 
-- `apps/web`: `F3/F4` (live run → persisted conversation) is only exercised with `--live`; the
-  worker-crash scenario has no bundled replay yet; page-refresh mid-run (V8) is asserted only in the
-  live test.
+- `apps/web`: `F3/F4/F4b` (live run → persisted conversation → grade) run only with `--live`; `F4`
+  reloads *after* the run has finished, so a page refresh mid-run (PLAN V8) is not asserted by any
+  flow. The worker-crash scenario has no bundled replay and no browser flow: the reducer folds
+  `interruption` / `run.resumed` / worker generation but nothing renders them yet.
 - `gauntlet` scenario has unit coverage and reset/observe on Modal but no scripted careful/careless pass.
-- Harness persistence (`/conversations`, `X-Faultline-User`) is in flight; `verify_backend.py`
-  only relies on `/health`, `/runs`, `/runs/{id}`, `/runs/{id}/events`.
-- **Failure provenance (PLAN.md §2.11) is in flight and NOT yet verified**: `tool.result.data.outcome`
-  / `error_class`, `fault.fired.origin`, run statuses `unevaluated` / `interrupted`, the
-  `interruption` / `run.resumed` / `episode.sandbox` events, code `ESANDBOX`, and the `worker-crash`
-  scenario (real harness kill + resume). Until `scripts/prove_interruptions.py` passes and this skill
-  gains `features/interruptions.md` + a stage, treat those fields as absent.
+- Harness persistence (`/conversations`, `X-Faultline-User`) is verified only through the browser
+  (`F3/F4`, `verify_web.py --live`); `verify_backend.py` still relies only on `/health`, `/runs`,
+  `/runs/{id}`, `/runs/{id}/events`.
+- **Failure provenance (PLAN.md §2.11) has a proof script but no recipe in this skill**:
+  `scripts/prove_interruptions.py` exists and its latest evidence is
+  `runs/20260913T002900Z_interruptions` (65/65 checks, worker-crash, sandbox-loss and lost-ack
+  cases; owned by the backend session). This skill has no `features/interruptions.md` and no
+  stage for it yet, and the browser flows do not assert `outcome` / `error_class` / `fault.fired.origin`
+  / `unevaluated` / `interrupted` / `ESANDBOX` beyond the status pills in `F10`.
