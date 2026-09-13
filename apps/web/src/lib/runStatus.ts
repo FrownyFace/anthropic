@@ -7,9 +7,73 @@
  * no grade exists — pending or unavailable grading is never shown as success.
  */
 
-import type { EvaluateResponse, RunStatus } from './types'
+import type { ErrorClass, EvaluateResponse, EvaluationStatus, RunStatus } from './types'
 
 export type Grade = 'passed' | 'partial' | 'ungraded'
+
+// --------------------------------------------------------------------------- not graded
+
+export interface UngradedNote {
+  tone: 'warn' | 'error' | 'neutral'
+  /** Always starts with "Not graded". */
+  title: string
+  body: string
+}
+
+/**
+ * Why a finished run has no evaluation, from `status`, `evaluation_status` and `error_class` —
+ * never from the presence of error text. Null while the run is still in flight or once an
+ * evaluation exists. Pending or unavailable grading is never a pass.
+ */
+export function ungradedNote(t: {
+  status: RunStatus
+  evaluation: EvaluateResponse | null
+  evaluationStatus: EvaluationStatus | null
+  evaluationError: string | null
+  errorClass: ErrorClass | null
+  error: string | null
+  score: number | null
+}): UngradedNote | null {
+  if (t.evaluation) return null
+  if (t.status === 'queued' || t.status === 'running') return null
+  const why = t.errorClass?.label ?? t.evaluationError ?? null
+  const graderFailed = t.evaluationStatus === 'failed' || t.status === 'unevaluated'
+  switch (t.status) {
+    case 'interrupted':
+      return {
+        tone: 'error',
+        title: 'Not graded — the run was interrupted',
+        body: `A real interruption ended the run and no worker resumed it${why ? `: ${why}` : ''}. Grading was ${t.evaluationStatus === 'failed' ? 'attempted but failed' : 'skipped'}; there is no score.`,
+      }
+    case 'error': {
+      const cause = why ?? t.error ?? null
+      return {
+        tone: 'error',
+        title: 'Not graded — the run could not be executed',
+        body: `The harness could not run the episode${cause ? `: ${cause}` : ''}. There is no score.`,
+      }
+    }
+    default:
+      break
+  }
+  if (graderFailed) {
+    return {
+      tone: 'warn',
+      title: 'Not graded — the grader failed',
+      body: `The agent's loop finished but evaluate() failed${why ? `: ${why}` : ''}. This is the environment's failure, not the agent's; there is no score.`,
+    }
+  }
+  return {
+    tone: 'warn',
+    title: 'Not graded',
+    body:
+      t.score !== null
+        ? `The record carries a score of ${Math.round(t.score)} but no evaluation detail; the grader's checks are not available for this run.`
+        : 'The run finished but no evaluation was recorded — grading is pending or unavailable, not a pass.',
+  }
+}
+
+// --------------------------------------------------------------------------- grade
 
 /**
  * `score = 60 × tests_pass + 40 × weighted checks` (services/sandbox-env/GRADING.md), so a score

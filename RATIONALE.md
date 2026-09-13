@@ -1,37 +1,78 @@
-# faultline — design rationale
+# Faultline — design rationale
 
-*working draft for the written submission and approximately five-minute video. time spent so far: **approximately 3.5 hours**, starting around **5 pm**. implementation and verification are ongoing; this is not the final time total.*
+*Written companion to the ~5-minute video. Time spent: about 4.5 hours of lead-session wall-clock
+(17:05–21:40 EDT, 2026-09-12) plus parallel Claude Code sessions for the web UI, browser
+verification, documentation review and copy; PLAN.md §9 has the block-by-block log.*
 
-## why this problem
+## Why this theme and this approach
 
-i chose **theme 3: systems & reliability** because a failed tool response can leave an agent with a difficult decision: did nothing happen, or did the operation succeed and only the acknowledgment disappear? retrying a write without checking can make the result worse.
+I chose **Theme 3 (Systems & Reliability)** with an evaluation twist. The failures that matter in
+agent products are not model failures but tool-boundary failures: the file is not there, the write
+is refused, or — the nasty one — the write happened and only the acknowledgement was lost. A
+careless agent that retries blindly makes things worse; a careful one checks first. Most harness
+demos show the happy path. Faultline is a small, honest environment where those failures are
+first-class, visible, and **graded**, so you can compare recovery behaviour rather than just task
+completion.
 
-faultline makes that decision observable. a small agent harness works on a bundled python repository inside an isolated modal sandbox. a separate environment introduces missing files, denied writes and lost acknowledgments. the browser shows the commands, outputs, file changes and recovery checks. the goal is a developer tool for reproducing and inspecting agent failures, with an evaluation component to distinguish finishing a task from recovering carefully.
+## What is non-obvious
 
-## the central experiment
+1. **Faults live outside the shell.** The fault plan, hit counters, ledger and grader sit in the
+   `sandbox-env` service; the agent's commands run in a separate Modal Sandbox with no network. An
+   injected `EACCES` or `504` is produced at the tool boundary and is indistinguishable from a real one.
+2. **Lost-ack plus an append-style task is a detectable idempotency trap.** `ack_lost` performs the
+   write and *then* withholds the response. The grader checks both the behaviour (a read of the file
+   before any further write, from the ledger) and the outcome (exactly one release entry, from the
+   file). Scripted controls score 100 for careful recovery and 8 for a blind re-append; live Haiku runs
+   scored 100 on every scenario without prompt tuning.
+3. **Simulated and real failures are different things, and the record must say which.** A concurrent
+   cleanup killed a sandbox during a live run; the harness labelled it like an injected fault and
+   ended the run "ok" with no score. That forced a provenance model: every failing tool result carries
+   `origin` (`injected | staged | real`), the layer that really failed, and an `outcome`
+   (`executed | failed | not_executed | unknown`); runs that cannot be graded end `unevaluated` or
+   `interrupted`. The agent still sees only OS-style errors.
+4. **A real harness interruption alongside the simulated one.** In `worker-crash` the harness process
+   really exits (`os._exit`) while its first changelog write is in flight; Modal re-invokes the function,
+   a fresh worker rebuilds the conversation from the persisted events, tells the gym, and hands the
+   agent an unknown-outcome result. Proven live twice (65/65 checks): worker generation 2, the ledger
+   confirms the write landed, final score 100.
+5. **The secret boundary is a deliverable.** Only the model-calling Modal function receives the
+   provider key; `/health` on every web function proves it is absent; the sandbox has no network.
 
-the release scenario asks the agent to bump a version and add a changelog entry. the environment performs the write, then returns a timeout-style tool error. a careful agent reads the file before deciding whether another write is needed; a careless append retry creates a duplicate.
+## Key decisions and tradeoffs
 
-verification checks both behavior and outcome: a read before another write, exactly one release entry, the correct version and passing tests. saved scripted controls scored 100 for careful recovery and 8 for a careless duplicate append. these are results for this fixture and rubric, not a general benchmark of model reliability. recorded live agent runs are bundled with the browser app so a reviewer can inspect the experiment without model quota or local setup.
+| Decision | Alternative | Why |
+|---|---|---|
+| Three separately deployed Modal apps | one process | mirrors real trust boundaries; each piece is replaceable |
+| Modal Sandbox per episode, `block_network=True` | subprocess in the service container | real isolation is the point; cost bounded by timeouts and cleanup |
+| Faults intercepted at the tool boundary | `chmod`/deletes inside the sandbox | ack-lost is only expressible there; deterministic; plan stays hidden |
+| Spawned run + SQLite event log + reconnecting SSE | loop inside the HTTP request | Modal caps web requests at 150 s; refresh and replay become free |
+| Manual Anthropic tool loop | SDK tool runner | per-step hooks: observe after mutations, fault deltas, resume from events |
+| Haiku 4.5 only (other models rejected with 400) | a model picker | cheap enough for reviewers to run many episodes; the interesting result is that a small model recovers well when the environment forces verification |
+| Hidden tests uploaded only at evaluate time | tests in the workspace | the agent cannot game the grader |
+| Bundled replays | live only | the assignment requires self-contained evaluation |
 
-## architecture and tradeoffs
+## What is verified and what is not
 
-- **separate harness and environment.** `apps/web`, `services/agent-harness` and `services/sandbox-env` deploy independently on modal. the environment exposes tools over mcp so another harness can use the same tasks and fault machinery. service hops add overhead but separate model decisions from execution and verification.
-- **real execution, explicit simulation.** commands operate on real files. transient missing-file and denied-write faults are simulated at the tool boundary; the sticky missing-file case starts with a file absent. lost-ack performs the operation and substitutes an error response, without breaking the connection. shell fault matching is limited and token-based.
-- **persistent history.** the harness runs separately from the browser's event stream. a single-writer sqlite store holds runs, events and conversations, with snapshots on a modal volume. saved verification demonstrates history surviving redeployment. periodic snapshots leave a potential loss window; persisted history alone does not establish worker recovery.
-- **bounded execution and credentials.** each episode gets an isolated sandbox with network access blocked and a limited lifetime. only the model-calling harness function receives the anthropic key.
-- **inspectable grading.** file checks and the execution ledger supplement tests. hidden tests are introduced at evaluation time, but currently execute in the modified workspace. this is not yet a tamper-resistant verifier. the 60/40 task-and-recovery score is a prototype rubric; individual checks matter more than the aggregate.
+Verified live, with evidence under `runs/` (gitignored) and the repo's verification skill
+(`.claude/skills/verify-faultline`, backend 65/65 plus Playwright browser flows): all scenarios on
+Haiku; all three injected fault kinds at the boundary; careful-vs-careless grading; the worker-crash
+resume; sandbox loss ending `interrupted`; the secret boundary. Known limits, left honest in PLAN §0:
+the gym's interruption route and run listing are not yet token-scoped (a second review found that a
+forged report could change a grade), the crash trigger sleeps rather than waiting on a confirmed write
+barrier, historical runs were imported but not reclassified, and the raw-shell fault matcher is
+token-based, not a shell parser.
 
-## what changed during development
+## With more time
 
-a concurrent cleanup terminated a sandbox during a live run. that exposed a distinction the initial design handled poorly: an injected tool failure, lost infrastructure and unavailable grading must not collapse into the same status. it led to explicit failure provenance and a clearer browser explanation of what happened. aligning those semantics across backend events, persisted history and the ui remains part of the finishing work.
+Per-episode control tokens and owner scoping; a landing barrier before the planned crash; warm
+sandbox pools; batch runs across seeds and models with recovery-rate charts (the gym is seedable);
+more fault kinds (partial writes, flaky test runner); trajectory export for evals.
 
-## next step and scope
+## Use of AI
 
-the next experiment is actual harness recovery: complete a shell write, interrupt the harness before acknowledgment, and have a fresh worker resume the same run and workspace without duplicating the write. the scenario and event contract exist, but that recovery path is not yet implemented or verified. it needs acknowledged recovery state and a deterministic interruption point, not an assumed delay.
-
-with more time, i would isolate verification further, measure behavior under concurrent runs, and explore safe ownership transfer when agents share a filesystem. for this take-home, the priority is one defensible end-to-end demonstration within the eight-hour limit.
-
-## use of ai
-
-i used claude code for implementation and parallel work. my role has been choosing the problem, defining the harness/environment boundary, directing fault semantics and grading, and challenging claims against execution evidence. development transcripts still need to be exported for the submission; the application's runtime traces are separate artifacts.
+Built with Claude Code: a lead session (Fable 5.1) that owned the plan, contracts, scenarios, fault
+semantics and grading rules, and Opus agent swarms for parallel implementation, live proofs and
+cross-review, plus parallel sessions for the UI, browser verification and docs. My judgement went
+into the problem framing, the trust-boundary split, the gym contract, what counts as evidence, and
+repeatedly refusing to accept a score as proof without file-level and ledger-level checks. The
+Claude Code transcripts are submitted alongside the repo.

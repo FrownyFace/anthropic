@@ -30,36 +30,54 @@ export function oneLine(s: string, max = 120): string {
   return flat.length <= max ? flat : `${flat.slice(0, max - 1)}…`
 }
 
+/** Plain words for a fault kind on a badge: `ack_lost` → "lost ack". Unknown kinds lose their underscores. */
+export const FAULT_KIND_WORDS: Record<string, string> = {
+  missing_file: 'missing file',
+  denied_write: 'write denied',
+  ack_lost: 'lost ack',
+  worker_crash: 'worker crash',
+  transport_abort: 'transport abort',
+}
+
+export function faultWords(kind: string): string {
+  return FAULT_KIND_WORDS[kind] ?? kind.replace(/_/g, ' ')
+}
+
 /**
  * What a fault *kind* does, for the scenario table where either mode may be in play
  * (services/sandbox-env/FAULTS.md).
  */
 export const FAULT_KIND_BLURB: Record<FaultKind, string> = {
   missing_file:
-    'Reads of one path are answered with ENOENT. Transient: intercepted at the tool boundary while the file stays on disk. Sticky: the file is left out of the workspace at reset, so the error is genuine until the agent recreates it.',
+    'The agent is told the file does not exist. Staged: it really was deleted before the run started. Simulated: it is still on disk and the read is refused a few times.',
   denied_write:
-    'The first writes to one path are refused with EACCES at the tool boundary; nothing is written until the fault lifts.',
+    'The first writes to one file are refused with "permission denied". Nothing is written until the block lifts.',
   ack_lost:
-    'A write runs for real, then the environment withholds the response. The agent cannot know the write landed.',
+    'The write happens, but the reply is withheld and comes back as a timeout. The agent cannot tell whether it landed.',
 }
 
 /**
- * What really happened for one fault that fired, by kind and origin. The injected and staged
- * variants of `missing_file` are different worlds: the injected file is still on disk, the staged
- * one really is absent.
+ * What really happened for one fault, by kind and origin. The injected and staged variants of
+ * `missing_file` are different worlds: the injected file is still on disk, the staged one really
+ * is absent. Returns '' for a kind this table does not know, so callers can fall back to the
+ * catalogue's own sentence.
  */
 export function faultBlurb(kind: FaultKind | string, origin: ErrorOrigin = 'injected'): string {
   switch (kind) {
     case 'missing_file':
       return origin === 'staged'
-        ? 'The file was left out of the workspace at reset, so this ENOENT is a genuine OS error: the file really is absent until the agent recreates it.'
-        : 'A read was answered with ENOENT at the tool boundary; the file was on disk the whole time and is served normally once the fault lifts.'
+        ? 'The file really was deleted before the run started, so this "no such file" is a genuine OS error until the agent recreates it.'
+        : 'The read was refused before it reached the sandbox. The file was on disk the whole time and reads normally once the block lifts.'
     case 'denied_write':
-      return 'The write was refused with EACCES at the tool boundary and nothing was written.'
+      return 'The write was refused with "permission denied" before it reached the sandbox. Nothing was written.'
     case 'ack_lost':
-      return 'The write landed, but the environment withheld the response — the agent cannot know whether it applied.'
+      return 'The write landed, but the reply was withheld and came back as a timeout. The agent cannot tell whether it applied.'
+    case 'worker_crash':
+      return 'Real, not simulated: the harness process is killed while a write is in flight. A fresh worker resumes the run.'
+    case 'transport_abort':
+      return 'Real, not simulated: the connection between the harness and the sandbox is cut while a call is in flight.'
     default:
-      return 'Injected failure.'
+      return ''
   }
 }
 
@@ -79,9 +97,4 @@ export function firstSentence(s: string | null | undefined, max = 240): string {
   const m = /[.!?][`'")\]]*(?=\s)/.exec(flat)
   const sentence = m ? flat.slice(0, m.index + m[0].length) : flat
   return sentence.length <= max ? sentence : `${sentence.slice(0, max - 1)}…`
-}
-
-/** `plural(1, 'file')` → "1 file", `plural(2, 'file')` → "2 files", `plural(2, 'retry', 'retries')`. */
-export function plural(n: number, word: string, words = `${word}s`): string {
-  return `${n} ${n === 1 ? word : words}`
 }

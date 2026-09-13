@@ -202,7 +202,6 @@ class ResumePlan:
     dangling: list[dict[str, Any]]
     resumed_from_event_id: int
     dropped_thinking: int = 0
-    submitted: bool = False
 
 
 def _content_of(events: list[dict[str, Any]], step: int | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -256,7 +255,6 @@ def plan_resume(record: dict[str, Any], *, build_task_message: Callable[..., str
     steps = sorted({e.get("step") for e in events if isinstance(e.get("step"), int)})
     dangling: list[dict[str, Any]] = []
     dropped_thinking = sum(1 for e in events if e.get("type") == "turn.thinking")
-    submitted = False
     last_step = 0
 
     for step in steps:
@@ -281,8 +279,6 @@ def plan_resume(record: dict[str, Any], *, build_task_message: Callable[..., str
                     "event_id": call.get("id"),
                 })
                 continue
-            if data.get("tool") == "submit":
-                submitted = True
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": tuid,
@@ -318,7 +314,6 @@ def plan_resume(record: dict[str, Any], *, build_task_message: Callable[..., str
         dangling=dangling,
         resumed_from_event_id=int(events[-1].get("id") or 0) if events else -1,
         dropped_thinking=dropped_thinking,
-        submitted=submitted,
     )
 
 

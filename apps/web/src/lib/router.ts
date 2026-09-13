@@ -78,21 +78,10 @@ export function hrefFor(route: Route): string {
   }
 }
 
-/** Structural equality, so callers can skip no-op navigations. */
-export function sameRoute(a: Route, b: Route): boolean {
-  return hrefFor(a) === hrefFor(b)
-}
-
 // --------------------------------------------------------------------------- window binding
 
 function locationKey(): string {
   return `${window.location.pathname}${window.location.search}`
-}
-
-/** The route the address bar currently shows. */
-export function currentRoute(): Route {
-  if (typeof window === 'undefined') return HOME
-  return parseRoute(window.location.pathname, window.location.search)
 }
 
 export interface NavigateOptions {

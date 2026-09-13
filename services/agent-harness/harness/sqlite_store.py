@@ -791,6 +791,27 @@ class SqliteStore:
                         os.remove(tmp)
         return self.health()
 
+    def checkpoint_on_exit(self) -> dict[str, Any]:
+        """Container shutdown: flush ONLY if THIS process has unsaved writes.
+
+        The exit hook used to force a checkpoint unconditionally, which turned any second Store
+        container into a data-loss hazard. `modal run` on modal_app.py builds an ephemeral app, and
+        `min_containers=1` starts that app its own `Store` against the SAME Volume. It restores the
+        snapshot, is handed no work (every maintenance entrypoint talks to the DEPLOYED Store by
+        name, `_deployed_store()`), and then on exit VACUUMed its now-stale copy over the live
+        snapshot — silently erasing every run and event the deployed Store had written in between.
+
+        `checkpoint()` clears `_dirty` inside the connection lock immediately after the VACUUM, so
+        "not dirty" means "everything committed is already in the snapshot": a clean container has
+        nothing to flush and must write nothing. A container that did write still flushes, which is
+        what the hook was for.
+        """
+        if not self._dirty:
+            log.info("store.exit_clean", "no unsaved writes; leaving the snapshot untouched",
+                     snapshot=self.snapshot_path)
+            return self.health()
+        return self.checkpoint(force=True)
+
     def _vacuum_into(self, target: str) -> None:
         try:
             self.conn.execute("VACUUM INTO ?", (target,))

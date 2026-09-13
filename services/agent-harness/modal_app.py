@@ -25,6 +25,7 @@ Deploy-time env (baked into the image so containers need no lookup):
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import sys
@@ -115,7 +116,11 @@ class Store:
     @modal.exit()
     def exit(self) -> None:
         try:
-            self._store.checkpoint(force=True)
+            # NOT checkpoint(force=True): a container with nothing unsaved must not write its copy
+            # over the Volume. `modal run` on this file starts an ephemeral Store (min_containers=1)
+            # on the same Volume, and a forced exit checkpoint from that one would erase whatever
+            # the deployed Store wrote while it was alive. See SqliteStore.checkpoint_on_exit.
+            self._store.checkpoint_on_exit()
         finally:
             self._store.close()
 
@@ -370,6 +375,150 @@ def import_legacy_runs(dict_name: str = "faultline-runs", apply: bool = False,
         moved += 1
     print(json.dumps({"ev": "import.done", "runs": moved, "skipped": skipped, "applied": apply,
                       "store": store.health.remote()}, default=str))
+
+
+def _legacy_from_dict(dict_name: str) -> tuple[list[dict[str, Any]], str]:
+    """Every run record still sitting in the pre-Store Modal Dict (empty list if it is gone)."""
+    import modal as _modal
+
+    try:
+        src = _modal.Dict.from_name(dict_name, environment_name=config.modal_environment(),
+                                    create_if_missing=False)
+        out = []
+        for run_id in list(src.get("__index__", []) or []):
+            record = src.get(run_id)
+            if isinstance(record, dict) and record.get("run_id"):
+                out.append(record)
+        return out, f"modal.Dict:{dict_name}"
+    except Exception as exc:  # noqa: BLE001 - the Dict may legitimately be gone
+        print(json.dumps({"ev": "backfill.dict_unavailable", "dict": dict_name,
+                          "error": f"{type(exc).__name__}: {exc}"}))
+        return [], f"modal.Dict:{dict_name} (unavailable)"
+
+
+def _legacy_from_disk() -> tuple[list[dict[str, Any]], str]:
+    """Fallback source: the run records saved as evidence under `runs/` (`run*.json`)."""
+    root = _HERE.parents[1] / "runs"
+    out: dict[str, dict[str, Any]] = {}
+    for path in sorted(root.glob("*/run*.json")) if root.is_dir() else []:
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict) and record.get("run_id") and record.get("events"):
+            out.setdefault(str(record["run_id"]), record)
+    return list(out.values()), f"disk:{root}/*/run*.json"
+
+
+@app.local_entrypoint()
+def backfill_provenance(dict_name: str = "faultline-runs", apply: bool = False,
+                        limit: int = 1000, chunk: int = 50, run_id: str = "",
+                        out: str = "", disk: bool = False) -> None:
+    """Give historical runs the failure provenance the taxonomy requires (PLAN.md §2.11).
+
+    Two phases, both idempotent, dry by default (`--apply` writes):
+
+    1. **import** — any run still only in the pre-Store Modal Dict (or, if that Dict is gone,
+       in the `runs/` evidence on disk) is copied into the Store with its original ids, events,
+       timestamps, status, evaluation and usage, attributed to the synthetic user `u_legacy`
+       in a conversation titled "imported (pre-Store)". Runs already in the Store are left
+       exactly as they are — including their original owner.
+    2. **classify** — every stored run that ended `ok` with no score because `evaluate` failed
+       gets `status` + `error_class` (+ an `Interruption` when the events show the sandbox
+       itself died) and ONE appended `log` event `provenance.backfilled`. Existing events are
+       never rewritten; the marker event is written BEFORE the row update so a crash in between
+       leaves a re-runnable state rather than a silent change (`INSERT OR IGNORE` on
+       `(run_id, seq)` makes the retry a no-op).
+
+        modal run -e local services/agent-harness/modal_app.py::backfill_provenance
+        modal run -e local services/agent-harness/modal_app.py::backfill_provenance --apply
+    """
+    from harness.backfill import apply_plan, import_record, plan_for, score_of
+    from harness.sqlite_store import now_iso
+    from harness.store import ModalStoreClient
+
+    # Plain-call view of the DEPLOYED Store, resolved by name for the reason in _deployed_store():
+    # `modal run` builds an ephemeral app, and using the in-module class would make a SECOND writer
+    # on the same Volume. Identical shape to a local SqliteStore, which is what the tests drive.
+    store = ModalStoreClient()
+    at = now_iso()
+    stored = {str(r.get("id") or r.get("run_id")): r
+              for r in (store.list_runs(int(limit), None) or [])}
+
+    # ---------------------------------------------------------------- 1. import pre-Store runs
+    legacy, source = _legacy_from_dict(dict_name)
+    if not legacy or disk:
+        from_disk, disk_source = _legacy_from_disk()
+        if not legacy:
+            legacy, source = from_disk, disk_source
+        else:
+            known = {str(r.get("run_id")) for r in legacy}
+            legacy += [r for r in from_disk if str(r.get("run_id")) not in known]
+            source = f"{source} + {disk_source}"
+    imported: list[dict[str, Any]] = []
+    for record in legacy:
+        rid = str(record.get("run_id"))
+        if rid in stored:
+            continue
+        line = {"run_id": rid, "scenario": record.get("scenario_id"),
+                "status": record.get("status"), "events": len(record.get("events") or []),
+                "source": source}
+        if not apply:
+            print(json.dumps({"ev": "backfill.import.dry_run", **line}))
+            imported.append(line)
+            continue
+        moved = import_record(store, record, chunk=int(chunk))
+        print(json.dumps({"ev": "backfill.import.moved", **line, **moved}))
+        imported.append({**line, **moved})
+    if imported and apply:
+        stored = {str(r.get("id") or r.get("run_id")): r
+                  for r in (store.list_runs(int(limit), None) or [])}
+
+    # ------------------------------------------------------- 2. classify every historical run
+    ids = [run_id] if run_id else [
+        rid for rid, row in stored.items()
+        # Cheap pre-filter on the summary; backfill.is_candidate() makes the real decision on the
+        # full record (it also reads the evaluation, the error text and the marker event).
+        if str(row.get("status") or "") == "ok" and row.get("score") is None
+    ]
+    changed: list[dict[str, Any]] = []
+    unchanged = 0
+    for rid in ids:
+        record = store.get_run(rid)
+        if not record:
+            print(json.dumps({"ev": "backfill.missing", "run_id": rid}))
+            continue
+        plan = plan_for(record, at=at)
+        if plan is None:
+            unchanged += 1
+            continue
+        line = {"run_id": rid, "from_status": plan["from_status"], "to_status": plan["to_status"],
+                "error_class": plan["error_class"]["code"], "layer": plan["error_class"]["layer"],
+                "interruption": bool(plan["interruption"]), "seq": plan["event"]["id"],
+                "score": score_of(record), "error": str(record.get("error") or "")[:160]}
+        if not apply:
+            print(json.dumps({"ev": "backfill.dry_run", **line}))
+            changed.append(line)
+            continue
+        after = apply_plan(store, plan)
+        line["applied"] = {"status": after.get("status"),
+                           "error_class": (after.get("error_class") or {}).get("code"),
+                           "interruptions": len(after.get("interruptions") or []),
+                           "events": len(after.get("events") or [])}
+        print(json.dumps({"ev": "backfill.applied", **line}))
+        changed.append(line)
+
+    summary = {"ev": "backfill.done", "applied": apply, "source": source,
+               "runs_in_store": len(stored), "imported": len(imported),
+               "inspected": len(ids), "changed": len(changed), "unchanged": unchanged,
+               "at": at, "rows": changed, "imports": imported,
+               "store": store.checkpoint(True) if apply else store.health()}
+    print(json.dumps(summary, default=str))
+    if out:
+        path = pathlib.Path(out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(summary, indent=1, default=str))
+        print(json.dumps({"ev": "backfill.evidence", "path": str(path)}))
 
 
 @app.local_entrypoint()

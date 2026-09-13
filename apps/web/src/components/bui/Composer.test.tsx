@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { MODEL_ALLOWLIST } from '@/lib/types'
+import { DEFAULT_MODEL, MODEL_ALLOWLIST } from '@/lib/types'
 
-import { Composer, filterScenarios, parseSlash, type ComposerProps } from './Composer'
+import { Composer, type ComposerProps } from './Composer'
+import { filterScenarios, parseSlash } from './composerHelpers'
 import { scenarios } from './test-fixtures'
 
 type Spies = Pick<ComposerProps, 'onScenarioChange' | 'onModelChange' | 'onSeedChange' | 'onSubmit'>
@@ -15,10 +16,10 @@ function Harness({
   initialPrompt = '',
   ...rest
 }: { spies: Spies; initialPrompt?: string } & Partial<
-  Pick<ComposerProps, 'disabled' | 'busy' | 'hint' | 'placeholder'>
+  Pick<ComposerProps, 'disabled' | 'busy' | 'hint' | 'placeholder' | 'models'>
 >) {
   const [scenarioId, setScenarioId] = useState<string | null>(null)
-  const [model, setModel] = useState<string>(MODEL_ALLOWLIST[0])
+  const [model, setModel] = useState<string>(DEFAULT_MODEL)
   const [seed, setSeed] = useState<number | null>(null)
   const [prompt, setPrompt] = useState(initialPrompt)
   return (
@@ -69,6 +70,13 @@ describe('helpers', () => {
 })
 
 describe('Composer', () => {
+  it('only offers a dropdown when more than one model is allowed', () => {
+    const s = spies()
+    render(<Harness spies={s} models={['model-a', 'model-b']} />)
+    expect(screen.queryByLabelText('Model')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Choose model' }).textContent).toContain(DEFAULT_MODEL)
+  })
+
   it('opens the scenario menu on "/" and picks with the arrow keys + Enter', () => {
     const s = spies()
     render(<Harness spies={s} />)
@@ -162,10 +170,17 @@ describe('Composer', () => {
     expect((screen.getByRole('button', { name: 'Running' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('exposes the model chip and a numeric seed input', () => {
+  it('shows the single allowed model as a static chip (no dropdown) and a numeric seed input', () => {
     const s = spies()
     render(<Harness spies={s} />)
-    expect(screen.getByRole('button', { name: 'Choose model' }).textContent).toContain('claude-haiku-4-5')
+    expect(MODEL_ALLOWLIST).toEqual(['claude-haiku-4-5'])
+    expect(DEFAULT_MODEL).toBe('claude-haiku-4-5')
+    expect(screen.queryByRole('button', { name: 'Choose model' })).toBeNull()
+    const chip = screen.getByLabelText('Model')
+    expect(chip.textContent).toContain('claude-haiku-4-5')
+    expect(chip.getAttribute('title')).toBe('the only model enabled for this demo')
+    expect(chip.tagName).toBe('SPAN')
+    expect(screen.queryByRole('menu')).toBeNull()
     const seed = screen.getByLabelText('Seed') as HTMLInputElement
     fireEvent.change(seed, { target: { value: '7' } })
     expect(s.onSeedChange).toHaveBeenLastCalledWith(7)

@@ -20,6 +20,13 @@ import httpx
 
 from faultline_common.schemas import EvaluateResponse, Event, RunRecord
 
+# Every status a run can END on, straight from the shared contract — so adding one to schemas.py
+# (PLAN.md §2.11 added `unevaluated` and `interrupted`) cannot leave this checker asserting a
+# stale set and reporting a correct run as a contract break.
+TERMINAL_STATUSES = {"ok", "truncated", "unevaluated", "interrupted", "error"}
+#: Statuses that mean "never graded, and that is the right answer" (docs/error-taxonomy.md).
+UNGRADED_STATUSES = {"unevaluated", "interrupted", "error"}
+
 RUN_ID = sys.argv[1]
 OUT = pathlib.Path(sys.argv[2])
 HARNESS = (sys.argv[3] if len(sys.argv) > 3
@@ -94,13 +101,24 @@ with httpx.Client(follow_redirects=True, timeout=60.0) as c:
     check("every Event validates against faultline_common.schemas", not bad,
           f"{len(events)} events, {len(bad)} invalid" + (f" {bad[:3]}" if bad else ""))
 
-    try:
-        EvaluateResponse.model_validate(rec["evaluation"])
-        check("EvaluateResponse validates against faultline_common.schemas", True,
-              {"score": rec["evaluation"]["score"], "passed": rec["evaluation"]["passed"],
-               "checks": len(rec["evaluation"]["checks"]), "ledger": len(rec["evaluation"]["ledger"])})
-    except Exception as exc:  # noqa: BLE001
-        check("EvaluateResponse validates against faultline_common.schemas", False, str(exc)[:300])
+    # A run that ended `unevaluated`/`interrupted` was never graded — that is the taxonomy working
+    # (`ok` implies a score; docs/error-taxonomy.md), not a missing field. Such a run must instead
+    # carry the error_class that says why, and `interrupted` must carry an Interruption.
+    if rec["evaluation"] is None and rec["status"] in UNGRADED_STATUSES:
+        klass = rec.get("error_class") or {}
+        check("an ungraded run explains itself with an error_class instead of an evaluation",
+              bool(klass.get("origin") and klass.get("layer") and klass.get("code") and klass.get("label"))
+              and (rec["status"] != "interrupted" or bool(rec.get("interruptions"))),
+              {"status": rec["status"], "error_class": klass,
+               "interruptions": len(rec.get("interruptions") or [])})
+    else:
+        try:
+            EvaluateResponse.model_validate(rec["evaluation"])
+            check("EvaluateResponse validates against faultline_common.schemas", True,
+                  {"score": rec["evaluation"]["score"], "passed": rec["evaluation"]["passed"],
+                   "checks": len(rec["evaluation"]["checks"]), "ledger": len(rec["evaluation"]["ledger"])})
+        except Exception as exc:  # noqa: BLE001
+            check("EvaluateResponse validates against faultline_common.schemas", False, str(exc)[:300])
 
     # ---------------------------------------------------------------- event payload shapes
     tr = [e for e in events if e["type"] == "tool.result"]
@@ -122,9 +140,15 @@ with httpx.Client(follow_redirects=True, timeout=60.0) as c:
           f"{sum(json_strings)}/{len(structured)} parse as JSON")
 
     ff = [e for e in events if e["type"] == "fault.fired"]
-    check("fault.fired data is the FaultFired object at top level",
-          bool(ff) and all({"step", "kind", "path", "mode"} <= set(e["data"]) for e in ff),
-          [e["data"] for e in ff])
+    if not ff and rec["status"] in UNGRADED_STATUSES:
+        # A run the sandbox loss cut short may never reach its injected fault: the event is absent
+        # because the scenario never got that far, not because the shape is wrong.
+        check("no fault.fired on a run that was cut short before its fault could fire", True,
+              {"status": rec["status"], "steps": rec.get("steps")})
+    else:
+        check("fault.fired data is the FaultFired object at top level",
+              bool(ff) and all({"step", "kind", "path", "mode"} <= set(e["data"]) for e in ff),
+              [e["data"] for e in ff])
 
     llm = [e for e in events if e["type"] == "llm.call"]
     check("llm.call carries attempt/model/stop_reason/request_id/usage/duration_ms",
@@ -155,7 +179,7 @@ with httpx.Client(follow_redirects=True, timeout=60.0) as c:
     done = [f for f in fr if f["event"] == "done"]
     check("terminal `event: done` with reason=finished",
           len(done) == 1 and done[0]["data"].get("reason") == "finished"
-          and done[0]["data"].get("status") in {"ok", "error", "truncated"},
+          and done[0]["data"].get("status") in TERMINAL_STATUSES,
           done[0]["data"] if done else None)
 
     n = len(events)

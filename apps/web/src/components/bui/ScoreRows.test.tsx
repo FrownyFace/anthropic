@@ -10,7 +10,12 @@ describe('ScoreRows', () => {
     const headline = document.querySelector<HTMLElement>('[data-slot="score-rows"] > div')!
     expect(screen.getByLabelText('score').textContent).toBe('72')
     expect(within(headline).getByText('6 passed · 0 failed · 0 errors')).toBeTruthy()
-    expect(within(headline).getByText('Passed')).toBeTruthy()
+    // tests passed but a recovery check failed: not a pass (gradeOf → partial), amber, never green
+    expect(within(headline).getByText('Graded with failures')).toBeTruthy()
+    expect(within(headline).queryByText('Passed')).toBeNull()
+    expect(screen.getByLabelText('score').className).toContain('amber')
+    expect(screen.getByLabelText('score').className).not.toContain('emerald')
+    expect(document.querySelector('[data-slot="score-rows"]')!.getAttribute('data-grade')).toBe('partial')
     expect(screen.getByText('checks 2/3')).toBeTruthy()
 
     const rows = document.querySelectorAll<HTMLElement>('[data-slot="score-row"]')
@@ -44,6 +49,35 @@ describe('ScoreRows', () => {
     expect(within(rows[3]!).getByText('python -m pytest -q')).toBeTruthy()
     expect(within(rows[3]!).getByText(/6 passed in 0.09s/)).toBeTruthy()
     expect(rows[3]!.querySelectorAll('[data-line-kind="code"]')).toHaveLength(2)
+  })
+
+  it('is green only for a real pass: every test and every check ok (gradeOf, not the score alone)', () => {
+    render(
+      <ScoreRows
+        evaluation={{
+          ...evaluation,
+          score: 100,
+          checks: evaluation.checks.map((c) => ({ ...c, ok: true })),
+        }}
+      />,
+    )
+    const headline = document.querySelector<HTMLElement>('[data-slot="score-rows"] > div')!
+    expect(within(headline).getByText('Passed')).toBeTruthy()
+    expect(screen.getByLabelText('score').className).toContain('emerald')
+    expect(document.querySelector('[data-slot="score-rows"]')!.getAttribute('data-grade')).toBe('passed')
+    // a high score with a failed check is still not green
+    render(
+      <ScoreRows
+        evaluation={{
+          ...evaluation,
+          score: 92,
+          checks: [{ id: 'x', ok: false, weight: 0.2, detail: 'nope' }],
+        }}
+      />,
+    )
+    const all = document.querySelectorAll<HTMLElement>('[data-slot="score-rows"]')
+    expect(all[1]!.getAttribute('data-grade')).toBe('partial')
+    expect(within(all[1]!).getByText('Graded with failures')).toBeTruthy()
   })
 
   it('shows a failed headline when tests fail', () => {

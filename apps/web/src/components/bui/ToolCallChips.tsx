@@ -11,9 +11,9 @@
  */
 
 import { useId, useState, type ReactNode } from 'react'
-import { Ban, Check, ChevronDown, CircleQuestionMark, LoaderCircle, Terminal, X } from 'lucide-react'
+import { ChevronDown, Terminal } from 'lucide-react'
 
-import { ErrorOriginBadge, FaultFiredBadge, RecoveredBadge } from '@/components/FaultBadge'
+import { CallBadges } from '@/components/FaultBadge'
 import { callStatus, type CallStatusTone } from '@/lib/callStatus'
 import { fmtDuration, oneLine } from '@/lib/format'
 import type { ToolCallView } from '@/lib/reducer'
@@ -21,7 +21,7 @@ import type { FileDiff } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 import { CodeBlock, parseUnifiedDiff } from './CodeBlock'
-import { diffForCall, resultParts, summariseCall, TOOL_ICON, toolLabel } from './toolMeta'
+import { diffForCall, resultParts, STATUS_GLYPH, summariseCall, TOOL_ICON, toolCallDomId, toolLabel } from './toolMeta'
 
 export interface ToolCallChipsProps {
   calls: ToolCallView[]
@@ -67,39 +67,20 @@ const PILL_TONE: Record<CallStatusTone, string> = {
 }
 
 /**
- * Status from structured fields only (`lib/callStatus.ts`): a lost acknowledgement is "no ack",
- * not a red cross, because the write may well have landed.
+ * Status from structured fields only (`lib/callStatus.ts`, icons from `STATUS_GLYPH`): a lost
+ * acknowledgement is "no ack", not a red cross, because the write may well have landed.
  */
 function StatusPill({ call, live }: { call: ToolCallView; live: boolean }) {
   const st = callStatus(call, live)
   const base = 'inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-2 font-mono text-[11px] ring-1 ring-inset'
-  let icon: ReactNode = null
-  switch (st.kind) {
-    case 'running':
-      icon = <LoaderCircle className="bui-spin size-3" aria-hidden />
-      break
-    case 'ok':
-      icon = <Check className="size-3" aria-hidden />
-      break
-    case 'failed':
-      icon = <X className="size-3" aria-hidden />
-      break
-    case 'unknown':
-      icon = <CircleQuestionMark className="size-3" aria-hidden />
-      break
-    case 'not_executed':
-      icon = <Ban className="size-3" aria-hidden />
-      break
-    default:
-      break
-  }
+  const { Icon } = STATUS_GLYPH[st.kind]
   return (
     <span
       className={cn(base, st.kind === 'running' ? 'bg-muted/50 text-ink-2 ring-line' : PILL_TONE[st.tone])}
       data-status={st.attr}
       title={st.detail}
     >
-      {icon}
+      {Icon ? <Icon className={cn('size-3', st.kind === 'running' && 'bui-spin')} aria-hidden /> : null}
       {st.label}
     </span>
   )
@@ -162,10 +143,13 @@ function Row({
 
   return (
     <div
+      // The id lets an interruption callout link to the dangling call (toolMeta.toolCallDomId).
+      id={toolCallDomId(call.toolUseId)}
       className="bui-fade-up"
       style={{ animationDelay: `${live ? 0 : Math.min(index, 8) * 50}ms` }}
       data-slot="tool-call"
       data-tool={call.tool}
+      data-tool-use-id={call.toolUseId}
     >
       <div className="flex min-h-7 w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <button
@@ -206,11 +190,7 @@ function Row({
             <span className="text-rose-700 dark:text-rose-300">−{removed}</span>
           </span>
         ) : null}
-        {call.fault ? <FaultFiredBadge fault={call.fault} /> : null}
-        {result?.errorClass && (result.errorClass.origin === 'real' || !call.fault) ? (
-          <ErrorOriginBadge errorClass={result.errorClass} />
-        ) : null}
-        {call.recovered ? <RecoveredBadge /> : null}
+        <CallBadges call={call} />
         <StatusPill call={call} live={live} />
         {result ? (
           <span className="shrink-0 font-mono text-[11px] text-ink-3 tabular-nums">

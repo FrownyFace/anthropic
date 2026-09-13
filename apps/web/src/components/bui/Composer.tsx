@@ -7,7 +7,8 @@
  * button that lights up when there is something to send.
  *
  * Changed: `/` lists the harness scenarios (picking one sets `scenarioId` and fills the prompt
- * with its `task_prompt`); the model chip is a shadcn DropdownMenu over the allowlist; a seed
+ * with its `task_prompt`); the model chip is a shadcn DropdownMenu over the allowlist — or a
+ * static chip when the allowlist has a single entry (this demo runs claude-haiku-4-5 only); a seed
  * chip holds a small numeric input. Dropped: the `@` sources menu, attachments, dictation, and
  * the `glimm` shader/sound celebration.
  */
@@ -24,6 +25,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type { Scenario } from '@/lib/types'
 import { cn } from '@/lib/utils'
+
+import { filterScenarios, parseSlash } from './composerHelpers'
 
 export interface ComposerProps {
   scenarios: Scenario[]
@@ -43,17 +46,6 @@ export interface ComposerProps {
   placeholder?: string
   /** Shown under the bar, e.g. "harness unreachable". */
   hint?: string
-}
-
-/** The slash query when the draft is exactly `/` + word characters, else null. */
-export function parseSlash(draft: string): string | null {
-  const m = /^\/([\w-]*)$/.exec(draft)
-  return m ? m[1]!.toLowerCase() : null
-}
-
-export function filterScenarios(scenarios: readonly Scenario[], query: string): Scenario[] {
-  const q = query.toLowerCase()
-  return scenarios.filter((s) => s.id.toLowerCase().startsWith(q) || s.title.toLowerCase().includes(q))
 }
 
 const MIN_H = 28
@@ -81,8 +73,6 @@ export function Composer({
 }: ComposerProps) {
   const [dismissed, setDismissed] = useState(false)
   const [forced, setForced] = useState(false)
-  const [active, setActive] = useState(0)
-  const [engaged, setEngaged] = useState(false)
   const [rowBox, setRowBox] = useState<{ top: number; height: number } | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -94,10 +84,20 @@ export function Composer({
   const menuOpen = query !== null
   const rows = menuOpen ? filterScenarios(scenarios, query) : []
 
-  useEffect(() => {
-    setActive(0)
-    setEngaged(false)
-  }, [menuOpen, query])
+  // The highlighted row is keyed by the menu "session" (open + query), so it resets by derivation
+  // whenever the menu opens or the query changes — no setState inside an effect.
+  const menuKey = menuOpen ? `open:${query}` : 'closed'
+  const [highlight, setHighlight] = useState({ key: menuKey, active: 0, engaged: false })
+  const current = highlight.key === menuKey ? highlight : { key: menuKey, active: 0, engaged: false }
+  const active = current.active
+  const engaged = current.engaged
+  const setActive = (next: number | ((cur: number) => number)) =>
+    setHighlight((h) => {
+      const base = h.key === menuKey ? h : { key: menuKey, active: 0, engaged: false }
+      return { ...base, active: typeof next === 'function' ? next(base.active) : next }
+    })
+  const setEngaged = (value: boolean) =>
+    setHighlight((h) => ({ ...(h.key === menuKey ? h : { key: menuKey, active: 0, engaged: false }), engaged: value }))
 
   useLayoutEffect(() => {
     const target = rowRefs.current[active]
@@ -259,26 +259,38 @@ export function Composer({
               <ChevronDown className="size-3 text-ink-3" aria-hidden />
             </button>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button type="button" aria-label="Choose model" className={CHIP}>
-                    <Cpu className="size-3 text-ink-3" aria-hidden />
-                    <span className="font-mono">{model}</span>
-                    <ChevronDown className="size-3 text-ink-3" aria-hidden />
-                  </button>
-                }
-              />
-              <DropdownMenuContent align="start" side="top" className="w-56">
-                <DropdownMenuRadioGroup value={model} onValueChange={(v) => onModelChange(String(v))}>
-                  {models.map((m) => (
-                    <DropdownMenuRadioItem key={m} value={m}>
-                      <span className="font-mono text-xs">{m}</span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {models.length <= 1 ? (
+              <span
+                className={cn(CHIP, 'cursor-default hover:bg-transparent hover:text-ink-2')}
+                title="the only model enabled for this demo"
+                aria-label="Model"
+                data-slot="model-chip"
+              >
+                <Cpu className="size-3 text-ink-3" aria-hidden />
+                <span className="font-mono">{model}</span>
+              </span>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button type="button" aria-label="Choose model" className={CHIP}>
+                      <Cpu className="size-3 text-ink-3" aria-hidden />
+                      <span className="font-mono">{model}</span>
+                      <ChevronDown className="size-3 text-ink-3" aria-hidden />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="start" side="top" className="w-56">
+                  <DropdownMenuRadioGroup value={model} onValueChange={(v) => onModelChange(String(v))}>
+                    {models.map((m) => (
+                      <DropdownMenuRadioItem key={m} value={m}>
+                        <span className="font-mono text-xs">{m}</span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             <label className={cn(CHIP, 'cursor-text')}>
               <Dices className="size-3 text-ink-3" aria-hidden />

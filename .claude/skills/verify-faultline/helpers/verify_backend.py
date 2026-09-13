@@ -372,8 +372,13 @@ def stage_survival(ev: Evidence) -> dict[str, str]:
         if p.is_file() and p.name not in ("manifest.json", "verification.json"):
             manifest[str(p.relative_to(ev.out))] = hashlib.sha256(p.read_bytes()).hexdigest()
     (ev.out / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    ev.check(S, "evidence_files_present", len(manifest) >= 20, f"{len(manifest)} files")
-    for must in ("commands.log", "outputs/careful_08_evaluate.json", "files/careful/CHANGELOG.after_ack_lost.md", "scores.json"):
+    ran = set(ev.results)  # stages that actually ran (doctor-only runs have far fewer files by design)
+    expected_min = 20 if "careful" in ran else 4
+    ev.check(S, "evidence_files_present", len(manifest) >= expected_min, f"{len(manifest)} files (min {expected_min})")
+    musts = ["commands.log", "scores.json"]
+    if "careful" in ran:
+        musts += ["outputs/careful_08_evaluate.json", "files/careful/CHANGELOG.after_ack_lost.md"]
+    for must in musts:
         ev.check(S, f"survives.{must}", (ev.out / must).exists(), must)
     return manifest
 

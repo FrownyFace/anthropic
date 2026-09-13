@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { buildStory, checkpointAt } from './story'
+import { buildStory, checkpointAt, checkpointWord } from './story'
 import type { RunRecord, Scenario } from './types'
 
 function load(name: string): RunRecord {
@@ -40,10 +40,66 @@ describe('buildStory', () => {
     const faultStep = story.checkpoints.find((c) => c.tone === 'warn' && /lost ack/.test(c.text))
     expect(faultStep).toBeDefined()
     expect(faultStep!.text).toMatch(/cannot know whether the write landed/)
+    expect(faultStep!.kind).toBe('fault')
     const recovery = story.checkpoints.find((c) => /read-back is the right move/.test(c.text))
     expect(recovery).toBeDefined()
     expect(recovery!.step!).toBeGreaterThan(faultStep!.step!)
     expect(recovery!.tone).toBe('ok')
+    expect(recovery!.kind).toBe('recovery')
+    expect(recovery!.text).toMatch(/after a lost acknowledgement/)
+  })
+
+  it('sets the checkpoint kind from structured facts: fault, recovery, tests, verdict (never from prose)', () => {
+    const rec = load('lost-ack')
+    const story = buildStory(rec.events, lostAck)
+    const kinds = story.checkpoints.map((c) => [c.label, c.kind, checkpointWord(c.kind, c.tone)] as const)
+    expect(kinds[0]).toEqual(['Start', 'info', ''])
+    const tests = story.checkpoints.find((c) => /the test command exited 0/.test(c.text))!
+    expect(tests.kind).toBe('tests')
+    expect(checkpointWord(tests.kind, tests.tone)).toBe('')
+    const fault = story.checkpoints.find((c) => c.kind === 'fault')!
+    expect(checkpointWord(fault.kind, fault.tone)).toBe('fault')
+    const recovery = story.checkpoints.find((c) => c.kind === 'recovery')!
+    expect(checkpointWord(recovery.kind, recovery.tone)).toBe('recovered')
+    const verdict = story.checkpoints.at(-1)!
+    expect(verdict.kind).toBe('verdict')
+    expect(verdict.tone).toBe('ok')
+    // a passing verdict is the other place "recovered" is allowed
+    expect(checkpointWord('verdict', 'ok')).toBe('recovered')
+    expect(checkpointWord('verdict', 'warn')).toBe('')
+    expect(checkpointWord('real-failure', 'fail')).toBe('real failure')
+    // an ordinary step says nothing even when its colour is amber
+    expect(checkpointWord('info', 'warn')).toBe('')
+  })
+
+  it('prologue: names the planted failures from faults_public (staged is not "simulated") and the real interruption by kind', () => {
+    const rec = load('lost-ack')
+    const staged = buildStory(rec.events, {
+      ...lostAck,
+      id: 'missing-config',
+      fault_kinds: ['missing_file'],
+      faults_public: [
+        { kind: 'missing_file', origin: 'staged', layer: 'filesystem', description: 'deleted at reset' },
+        { kind: 'missing_file', origin: 'injected', layer: 'boundary', description: 'refused at the boundary' },
+      ],
+    })
+    expect(staged.checkpoints[0]!.text).toMatch(/staged: file absent since reset/)
+    expect(staged.checkpoints[0]!.text).toMatch(/simulated: missing file \(file still on disk\)/)
+    expect(staged.checkpoints[0]!.text).toMatch(/2 failures/)
+    const crash = buildStory(rec.events, {
+      ...lostAck,
+      id: 'worker-crash',
+      fault_kinds: [],
+      harness_faults: [{ kind: 'worker_crash', tool: 'write_file', path: 'CHANGELOG.md', nth: 1, after_ms: 400 }],
+    })
+    expect(crash.checkpoints[0]!.text).toMatch(/the worker really is killed/)
+    expect(crash.checkpoints[0]!.text).not.toMatch(/cancelled mid-flight/)
+    const abort = buildStory(rec.events, {
+      ...lostAck,
+      harness_faults: [{ kind: 'transport_abort', tool: 'write_file', path: 'CHANGELOG.md', nth: 1, after_ms: 400 }],
+    })
+    expect(abort.checkpoints[0]!.text).toMatch(/the request is really cancelled mid-flight; the server still completes it/)
+    expect(abort.checkpoints[0]!.text).not.toMatch(/really is killed/)
   })
 
   it('reports what the test command exited, not that "the tests passed" (that is the grader\'s call)', () => {

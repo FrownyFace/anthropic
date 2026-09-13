@@ -14,10 +14,10 @@ Target 4:30–5:00. Screen: the deployed web app; one terminal tab for `modal ap
 ## 1:30 – 4:00 · Live run: `lost-ack`
 - Pick the scenario, keep Haiku, press Run. Narrate the transcript as it streams:
   - reset → files appear; the agent reads README/CHANGELOG.
-  - the write to CHANGELOG.md hangs ~3 s and returns `504 … may or may not have completed` (fault badge).
+  - the write to CHANGELOG.md hangs ~3 s and returns `504 … may or may not have completed` (a simulated `ack_lost` fault badge and a neutral "no ack" status pill — not a red failure).
   - "Watch what it does next." Ideal: read_file CHANGELOG.md → sees the entry landed → does not re-append → bumps version → pytest → submit.
   - Score card: tests 60% + checks (`verified_before_rewrite`, `no_duplicate_entry`, `version_bumped`).
-- In the workspace column: Diffs shows exactly one 0.2.0 section. Logs: same `run_id` in every line; flash the terminal `modal app logs faultline-sandbox-env -e local` showing the `ack_lost` decision line.
+- In the workspace column: Diffs shows exactly one 0.2.0 section. Logs: the run's lines carry its `run_id` (browser-wide web lines are mixed in); flash the terminal `modal app logs faultline-sandbox-env -e local` showing the `ack_lost` decision line.
 - If time: run `locked-file`, or show the careless scripted control that appended twice and scored 8 (`runs/20260912T220451Z_faults/`; no bundled replay shows a failed recovery).
 
 ## 4:00 – 4:45 · Decisions and tradeoffs

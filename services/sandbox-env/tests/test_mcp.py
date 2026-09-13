@@ -345,7 +345,9 @@ async def test_calls_after_delete_are_rejected(live_server, fake_ws):
     async with client(live_server, ep.episode_id) as c:
         res = await c.call_tool("list_dir", {"path": "."}, raise_on_error=False)
     assert res.is_error
-    assert payload(res)["code"] == "EINVAL"
+    # A deleted episode's sandbox is really gone, so the code is the real-sandbox-loss one, not
+    # EINVAL ("bad argument"). See tests/test_provenance.py::test_a_deleted_episode_answers_esandbox_not_einval.
+    assert payload(res)["code"] == "ESANDBOX"
 
 
 # --------------------------------------------------------------------------- transport details

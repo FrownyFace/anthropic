@@ -228,7 +228,7 @@ class LedgerEntry(BaseModel):
     command: str | None = Field(default=None, description="run_command only")
     mutating: bool = False
     fault: FaultFired | None = None
-    outcome: Literal["ok", "error", "short_circuit", "ack_lost"]
+    outcome: Literal["ok", "error", "short_circuit", "ack_lost", "unknown"] = Field(description="unknown = the sandbox may or may not have applied it (WorkspaceError/timeout after dispatch)")
     exit_code: int | None = None
     duration_ms: int = 0
     origin: ErrorOrigin | None = Field(default=None, description="set when outcome != ok: injected | staged | real")
@@ -257,6 +257,7 @@ class ResetResponse(BaseModel):
     workspace_root: str = "/workspace"
     files: list[FileEntry]
     sandbox_id: str | None = Field(default=None, description="for ops/evidence only; never given to the model")
+    control_token: str | None = Field(default=None, description="per-episode bearer minted at reset; required as header X-Faultline-Control on observe/evaluate/delete/interruptions. Held by the harness only — never sent to the model or the browser, never listed by GET /episodes")
 
 
 class FileDiff(BaseModel):
@@ -329,25 +330,25 @@ class Event(BaseModel):
     what SSE uses as the event id / Last-Event-ID.
 
     data shapes by type:
-      run.started       {scenario_id, model, seed, max_steps, anthropic_workspace?: masked}
-      episode.reset     {episode_id, files: [FileEntry], task_prompt, sandbox_id (short), attempt (1 = first provisioning)}
+      run.started       {scenario_id, model, seed, max_steps, anthropic_workspace?: masked, sandbox_env_url, worker_generation}
+      episode.reset     {episode_id, files: [FileEntry], task_prompt, sandbox_id (short), attempt (1 = first provisioning), scenario, workspace_root}
       turn.text         {text}
-      tool.call         {tool, input, tool_use_id}
+      tool.call         {tool, input, tool_use_id, mutating}
       tool.result       {tool_use_id, tool, output: str, is_error: bool, duration_ms, fault?: FaultFired,
                          outcome: executed|failed|not_executed|unknown, error_class?: ErrorClass (iff is_error),
                          error_code?: str (compat), attempts: int (harness retries of this call; 1 = none),
-                         sandbox: {id: short, alive: bool}}
+                         sandbox: {id: short, alive: bool}, summary?, synthetic?: bool (resume-generated), reported_to_gym?: bool}
       fault.fired       FaultFired
       workspace.diff    {files: [FileEntry], diffs: [FileDiff]}
       episode.evaluated EvaluateResponse
       run.finished      {status, usage: {input_tokens, output_tokens}, duration_ms, error?: str,
                          evaluation_status: ok|failed|skipped, evaluation_error?: str, steps, score?,
-                         error_class?: ErrorClass (present whenever status is unevaluated|interrupted|error)}
+                         error_class?: ErrorClass (present whenever status is unevaluated|interrupted|error), worker_generation, interruptions}
       log               {svc, lvl, ev, msg, ...}   (unified log line mirrored into the stream)
       llm.call          {attempt, model, stop_reason?, request_id?, usage: Usage-shaped {input_tokens, output_tokens, cache_read_input_tokens?, cache_creation_input_tokens?}, duration_ms, error?}
       turn.thinking     {text}   (summarised thinking, models that expose it)
       interruption      Interruption   (a REAL interruption: origin is always "real")
-      run.resumed       {worker_generation, resumed_from_event_id, dangling_tool_use_id?, resumed_at}
+      run.resumed       {worker_generation, resumed_from_event_id, dangling_tool_use_id?, resumed_at, step, dropped_thinking_blocks}
       episode.sandbox   {sandbox_id, status: alive|terminated|replaced, reason, step}   (the environment noticed the worker changed)
     Every tool.result with is_error carries data.error_class: ErrorClass; every fault.fired carries origin.
     """
@@ -366,7 +367,7 @@ RunStatus = Literal[
     "ok",           # agent submitted / ended, evaluation succeeded
     "truncated",    # step budget exhausted (still evaluated)
     "unevaluated",  # loop finished but evaluate() failed — NOT ok, NOT an agent error
-    "interrupted",  # a real interruption ended the run without resume (sandbox gone, worker died, ...)
+    "interrupted",  # a real interruption ended the run and no worker could continue it (sandbox gone, retries exhausted, ...)
     "error",        # the harness could not run the episode (model auth, gym reset failure, bug)
 ]
 
@@ -388,15 +389,17 @@ class Interruption(BaseModel):
     at: str
     detail: str | None = None
 
-MODEL_ALLOWLIST = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"]
+MODEL_ALLOWLIST = ["claude-haiku-4-5"]  # user decision 2026-09-12 21:30 EDT: the backend rejects every other model with 400 "model must be claude-haiku-4-5"
 DEFAULT_MODEL = "claude-haiku-4-5"
 
 
 class RunRequest(BaseModel):
     scenario_id: str
-    model: str | None = Field(default=None, description="must be in MODEL_ALLOWLIST; None = ANTHROPIC_MODEL env")
+    model: str | None = Field(default=None, description="must be in MODEL_ALLOWLIST (only claude-haiku-4-5); None = the default; anything else -> 400 'model must be claude-haiku-4-5'")
     seed: int | None = None
     max_steps: int | None = Field(default=None, ge=1, le=40)
+    task_prompt: str | None = Field(default=None, description="overrides the scenario task prompt (the user edited it in the composer); wins over the scenario default")
+    harness_faults: list[HarnessFault] | None = Field(default=None, description="overrides the scenario harness_faults for this run (ops/testing)")
 
 
 class Usage(BaseModel):

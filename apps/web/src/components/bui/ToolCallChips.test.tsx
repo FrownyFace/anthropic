@@ -58,7 +58,7 @@ describe('ToolCallChips', () => {
     renderChips(<ToolCallChips calls={[lostAckWrite]} />)
     const h = header(row('write_file'))
     // origin word on the badge: this was the environment, not a real failure
-    expect(within(h).getByText('simulated: ack_lost')).toBeTruthy()
+    expect(within(h).getByText('simulated: lost ack')).toBeTruthy()
     expect(within(h).getByText('read-back seen')).toBeTruthy()
     // a lost ack means the write may well have landed: neutral "no ack", never a red cross
     expect(within(h).getByText('no ack')).toBeTruthy()
@@ -172,7 +172,7 @@ describe('ToolCallChips', () => {
     const enoent = row('read_file')
     expect(within(enoent).getByText('ENOENT')).toBeTruthy()
     expect(within(enoent).getByText(/No such file or directory/)).toBeTruthy()
-    expect(within(enoent).getByText('simulated: missing_file')).toBeTruthy()
+    expect(within(enoent).getByText('simulated: missing file')).toBeTruthy()
     expect(within(enoent).queryByText('read-back seen')).toBeNull()
     // an injected missing_file never reached the sandbox: "not executed", not a failure
     expect(enoent.querySelector('[data-status]')!.getAttribute('data-status')).toBe('not-executed')

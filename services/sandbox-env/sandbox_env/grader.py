@@ -36,7 +36,7 @@ from faultline_common.schemas import (
 from . import episodes, faults, scenarios
 from .paths import EVAL_DIR, WORKSPACE, abs_path
 from .scenarios import CheckSpec, ScenarioBundle
-from .util import truncate_stdio
+from .util import now_iso, truncate_stdio
 from .workspace import Workspace, WorkspaceError, tar_bytes
 
 log = get_logger("sandbox-env")
@@ -53,8 +53,20 @@ VERSION_PATH = "src/ratelimiter/version.py"
 #: every run, passing or failing, as "the suite did not run". Clearing addopts keeps the effective
 #: command exactly `pytest -q -p no:cacheprovider <paths>` while restoring the summary line.
 _PYTEST = "python -m pytest -q -p no:cacheprovider -o addopts="
-PYTEST_CMD = f"cd {WORKSPACE} && PYTHONPATH={WORKSPACE}/src {_PYTEST} tests {EVAL_DIR}"
-PYTEST_TIMEOUT_S = 120
+#: `--confcutdir` is the other load-bearing flag (GRADING.md step 2). Without it pytest loads
+#: `/workspace/conftest.py` — a file the AGENT can write — and applies it to the hidden tests too.
+#: Measured under the sandbox's pinned pytest 7.4.4: a four-line `pytest_collection_modifyitems`
+#: at the workspace root dropped both hidden tests from the run and the grader read the result as
+#: "6 passed", exit 0, i.e. a full 60 test points for a repo that was never checked. Pointing
+#: confcutdir at the eval directory excludes conftests in its *ancestors* (`/workspace` and above)
+#: while still loading `tests/conftest.py`, which the fixture's own suite needs for its `root`
+#: fixture — verified: visible tests still 6 passed with the flag on.
+_CONFCUT = f"--confcutdir={abs_path(EVAL_DIR)}"
+PYTEST_CMD = f"cd {WORKSPACE} && PYTHONPATH={WORKSPACE}/src {_PYTEST} {_CONFCUT} tests {EVAL_DIR}"
+#: Must leave room under the Modal web request cap: `evaluate` is one HTTP request (upload + pytest
+#: + rm + the file-reading checks), and PLAN.md §2.3 budgets ~110 s for any single request against
+#: Modal's hard 150 s. 120 s of pytest alone could blow through both; 90 s cannot.
+PYTEST_TIMEOUT_S = 90
 
 FAULT_NEVER_FIRED = "fault never triggered"
 
@@ -356,6 +368,11 @@ def run_hidden_tests(ws: Workspace, bundle: ScenarioBundle) -> TestsResult:
     hidden_dir = bundle.hidden_tests_dir
     uploaded = False
     if hidden_dir and hidden_dir.is_dir():
+        # Unpack into a directory we know is empty. `untar` merges into its destination, and
+        # `.faultline_eval` is in SKIP_DIRS (so nothing the agent leaves there shows up in observe,
+        # list_dir or the baseline diff) — a conftest.py planted at that exact path would be loaded
+        # for the hidden tests themselves, inside confcutdir. Cheap to make that impossible.
+        ws.rmtree_abs(abs_path(EVAL_DIR))
         ws.upload_tar(tar_bytes(str(hidden_dir)), abs_path(EVAL_DIR))
         uploaded = True
         log.info("grader.hidden_uploaded", str(hidden_dir), scenario_id=bundle.id, dest=abs_path(EVAL_DIR))
@@ -432,9 +449,20 @@ def evaluate(episode_id: str, ws: Workspace | None = None) -> EvaluateResponse:
         raise
     score = score_for(tests, checks)
 
-    ep["evaluated_at"] = episodes.now_iso() if hasattr(episodes, "now_iso") else None
-    ep["score"] = score
-    episodes.save(ep)
+    # Re-read before writing the score. `ep` was loaded before the hidden tests ran (seconds ago on
+    # Modal), and modal.Dict has no compare-and-swap: saving that stale snapshot would silently undo
+    # anything written in between — a `POST /episodes/{id}/interruptions` annotation, or a DELETE's
+    # `terminated: true`, which would make the episode claim a live sandbox again.
+    steps = int(ep.get("step", 0))
+    try:
+        fresh = episodes.load(episode_id)
+    except episodes.EpisodeNotFound:  # deleted while we were grading; the score has nowhere to go
+        fresh = None
+    if fresh is not None:
+        fresh["evaluated_at"] = now_iso()
+        fresh["score"] = score
+        episodes.save(fresh)
+        steps = int(fresh.get("step", steps))
 
     log.info(
         "episode.evaluated",
@@ -446,7 +474,7 @@ def evaluate(episode_id: str, ws: Workspace | None = None) -> EvaluateResponse:
         tests=f"{tests.passed}p/{tests.failed}f/{tests.errors}e",
         checks_ok=sum(1 for c in checks if c.ok),
         checks_total=len(checks),
-        steps=ep.get("step", 0),
+        steps=steps,
         dur_ms=int((time.perf_counter() - t0) * 1000),
     )
     return EvaluateResponse(

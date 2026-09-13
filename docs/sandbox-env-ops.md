@@ -17,7 +17,16 @@ Nothing in the gym contract (PLAN.md §2.2) changed — the routes below are **a
 
 Environment knobs (all read at import): `EPISODE_TTL_S` (1800), `EPISODE_PURGE_S` (86400, when a
 terminated record is dropped from the Dict), `EPISODE_SWEEP_INTERVAL_S` (300),
-`EPISODE_SWEEP_MAX` (200 episodes per scan).
+`EPISODE_SWEEP_MAX` (200 episodes per scan), `EPISODE_SWEEP_MAX_ACTIONS` (25 terminates+purges per
+sweep, so a backlog is never paid for inside the `POST /episodes` that triggered it — the sweep is
+idempotent, the next one finishes the job; the out-of-band `sweep` function has no budget).
+
+`EPISODE_SWEEP_MAX` bounds the *sweep*, never the protection lists: `active_sandboxes()` (what
+`reap` spares) and `mark_terminated()` scan the whole Dict. modal.Dict returns keys in its own
+order, so a bounded scan of a store that holds more records than the bound omits arbitrary
+episodes — and an omitted episode is an unprotected one. The store passed 200 records in normal use
+(223 on 2026-09-13 00:52 UTC), so that bound had made `reap`'s protection list partial again
+(cross-review fix, evidence `runs/20260913T005203Z_review_sandbox_env/live_checks.json`).
 
 ## 2. New ops routes
 
@@ -26,9 +35,16 @@ GET  /episodes?probe=true&limit=200
      -> {count, live, probed, ttl_s, purge_s,
          episodes: [{episode_id, scenario_id, created_at, age_s, step,
                      sandbox_id, alive, terminated, done, score, finished_at}]}
-POST /episodes/sweep[?ttl_s=600]
-     -> {scanned, ttl_s, purge_s, expired: [...], purged: [...], errors: [...]}
+POST /episodes/sweep[?ttl_s=3600]
+     -> {scanned, ttl_s, purge_s, expired: [...], purged: [...], errors: [...], budget_exhausted}
 ```
+
+* `ttl_s` on this route may only make the sweep **less** aggressive: anything below `EPISODE_TTL_S`
+  is raised to it (logged as `ev: episode.sweep_ttl_clamped`). The route is unauthenticated on a
+  public URL, and `?ttl_s=1` meant "terminate every episode older than a second", i.e. one request
+  from anywhere could end every live run — the unsafe-`reap` failure with a lower bar to reach it.
+  To genuinely shorten the TTL, use `modal run …::sweep --ttl-s 600` (behind Modal auth).
+* `budget_exhausted: true` means the sweep hit `EPISODE_SWEEP_MAX_ACTIONS`; call it again.
 
 * `alive` is `true`/`false` from `Sandbox.poll()`, or **`null` when we did not look**
   (`?probe=false`). Never render `null` as "alive".

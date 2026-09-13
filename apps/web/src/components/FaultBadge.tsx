@@ -1,10 +1,11 @@
-import { AlertTriangle, CheckCircle2, FileX2, Lock, OctagonAlert, Timer } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileX2, Lock, OctagonAlert, Timer, Zap } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { originText, taxonomyLabel } from '@/lib/codes'
-import { FAULT_KIND_BLURB, faultBlurb } from '@/lib/format'
-import type { ErrorClass, ErrorOrigin, FaultFired, FaultKind } from '@/lib/types'
+import { FAULT_KIND_BLURB, faultBlurb, faultWords } from '@/lib/format'
+import type { ToolCallView } from '@/lib/reducer'
+import type { ErrorClass, ErrorOrigin, FaultFired, FaultKind, FaultPublic } from '@/lib/types'
 
 const ICON: Record<FaultKind, typeof FileX2> = {
   missing_file: FileX2,
@@ -32,11 +33,38 @@ export function FaultKindBadge({ kind, className }: { kind: FaultKind; className
         render={
           <Badge variant="outline" className={`${ORIGIN_TONE.injected} ${className ?? ''} font-mono`}>
             <Icon aria-hidden />
-            {kind}
+            {faultWords(kind)}
           </Badge>
         }
       />
-      <TooltipContent>{FAULT_KIND_BLURB[kind] ?? 'Injected failure.'}</TooltipContent>
+      <TooltipContent>{FAULT_KIND_BLURB[kind] ?? 'Simulated failure.'}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/**
+ * One fault class from the scenario catalogue (`Scenario.faults_public`): the origin word the
+ * transcript will later use ("staged" / "simulated" / "real") plus the kind in plain words, so the
+ * table teaches the vocabulary the run is narrated in. Amber for staged and simulated, red for real.
+ */
+export function FaultPublicBadge({ fault }: { fault: FaultPublic }) {
+  const Icon = ICON[fault.kind as FaultKind] ?? (fault.origin === 'real' ? Zap : AlertTriangle)
+  const tone = ORIGIN_TONE[fault.origin] ?? ORIGIN_TONE.injected
+  const label = taxonomyLabel(fault.origin, fault.kind, fault.layer)
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge variant="outline" className={`${tone} font-mono`} data-origin={fault.origin}>
+            <Icon aria-hidden />
+            {originText(fault.origin)}: {faultWords(fault.kind)}
+          </Badge>
+        }
+      />
+      <TooltipContent className="max-w-xs">
+        {label ? <div className="font-mono text-[11px]">{label}</div> : null}
+        <div>{faultBlurb(fault.kind, fault.origin) || fault.description}</div>
+      </TooltipContent>
     </Tooltip>
   )
 }
@@ -56,13 +84,13 @@ export function FaultFiredBadge({ fault }: { fault: FaultFired }) {
         render={
           <Badge variant="outline" className={`${ORIGIN_TONE[origin]} font-mono`} data-origin={origin}>
             <Icon aria-hidden />
-            {originText(origin)}: {fault.kind}
+            {originText(origin)}: {faultWords(fault.kind)}
           </Badge>
         }
       />
       <TooltipContent className="max-w-xs">
         {label ? <div className="font-mono text-[11px]">{label}</div> : null}
-        <div>{fault.description || faultBlurb(fault.kind, origin)}</div>
+        <div>{fault.description || faultBlurb(fault.kind, origin) || 'Simulated failure.'}</div>
       </TooltipContent>
     </Tooltip>
   )
@@ -93,6 +121,23 @@ export function ErrorOriginBadge({ errorClass }: { errorClass: ErrorClass }) {
         {errorClass.detail ? <div className="opacity-80">{errorClass.detail}</div> : null}
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+/**
+ * The badge trio for one tool call, in one place so every renderer agrees: the fault that hit it
+ * (origin word), the classified error when it is real or unexplained by a fault, and the
+ * read-back hint. Rendered once per call — by ToolCallChips, or by ThinkingTrace's rail rows when
+ * no chips are nested inside it.
+ */
+export function CallBadges({ call }: { call: Pick<ToolCallView, 'fault' | 'result' | 'recovered'> }) {
+  const ec = call.result?.errorClass ?? null
+  return (
+    <>
+      {call.fault ? <FaultFiredBadge fault={call.fault} /> : null}
+      {ec && (ec.origin === 'real' || !call.fault) ? <ErrorOriginBadge errorClass={ec} /> : null}
+      {call.recovered ? <RecoveredBadge /> : null}
+    </>
   )
 }
 

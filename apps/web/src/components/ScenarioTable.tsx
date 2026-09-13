@@ -2,12 +2,13 @@ import { useMemo } from 'react'
 import { createColumnHelper, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table'
 import { Loader2, Play, Rewind, Zap } from 'lucide-react'
 
-import { FaultKindBadge } from '@/components/FaultBadge'
+import { FaultKindBadge, FaultPublicBadge } from '@/components/FaultBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { faultWords } from '@/lib/format'
 import { demoFor } from '@/lib/replay'
 import type { Scenario } from '@/lib/types'
 
@@ -17,7 +18,7 @@ const features = tableFeatures({})
 const COLUMN_WIDTH: Record<string, string> = {
   title: '22%',
   description: '36%',
-  turns: '9%',
+  steps: '9%',
   faults: '17%',
   run: '8%',
   replay: '8%',
@@ -37,9 +38,10 @@ export interface ScenarioTableProps {
 }
 
 /**
- * shadcn data table (TanStack Table + shadcn Table) of the bundled scenarios: title, description,
- * turn budget, the failure classes in play, and one column each for Run (live episode) and Replay
- * (bundled recording, no backend). Clicking a row loads it into the composer.
+ * shadcn data table (TanStack Table + shadcn Table) of the bundled scenarios: title, what goes
+ * wrong, step budget, the failures in play (one badge per `faults_public` row, with its origin
+ * word), and one column each for Run (a live run) and Replay (a recorded run, no server). Clicking
+ * a row loads it into the composer.
  */
 export function ScenarioTable({
   scenarios,
@@ -73,7 +75,7 @@ export function ScenarioTable({
                       <span className="mt-1 inline-block cursor-help text-[11px] text-muted-foreground/80 underline decoration-dotted underline-offset-2" />
                     }
                   >
-                    graded on {checks.length} {checks.length === 1 ? 'check' : 'checks'} + hidden tests
+                    scored on hidden tests + {checks.length} recovery {checks.length === 1 ? 'check' : 'checks'}
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <ul className="list-disc space-y-0.5 pl-4 text-[12px]">
@@ -90,46 +92,55 @@ export function ScenarioTable({
       }),
       columnHelper.accessor('description', {
         id: 'description',
-        header: 'What happens',
+        header: 'What goes wrong',
         cell: ({ getValue }) => (
           <p className="text-[12.5px] leading-relaxed text-muted-foreground">{getValue()}</p>
         ),
       }),
       columnHelper.accessor('max_steps', {
-        id: 'turns',
-        header: () => <span className="whitespace-nowrap">Max turns</span>,
+        id: 'steps',
+        header: () => <span className="whitespace-nowrap">Step budget</span>,
         cell: ({ getValue }) => (
           <span className="font-mono text-[12.5px] tabular-nums">{getValue()}</span>
         ),
       }),
       columnHelper.display({
         id: 'faults',
-        header: 'Failure injected',
+        header: 'Failure',
         cell: ({ row }) => {
           const s = row.original
+          // The catalogue's per-origin list is the truth (a staged deletion and a simulated
+          // refusal are different failures); fall back to kinds + harness faults for an older harness.
+          const pub = s.faults_public ?? []
           const real = s.harness_faults ?? []
           const kinds = s.fault_kinds ?? []
           return (
             <div className="flex min-w-0 flex-wrap gap-1.5">
-              {kinds.map((k) => (
-                <FaultKindBadge key={k} kind={k} />
-              ))}
-              {real.map((f) => (
-                <Tooltip key={`${f.kind}-${f.path}-${f.nth}`}>
-                  <TooltipTrigger
-                    render={
-                      <Badge variant="outline" className="border-rose-500/30 bg-rose-500/10 font-mono text-rose-700 dark:text-rose-300">
-                        <Zap aria-hidden /> real: {f.kind.replace('_', ' ')}
-                      </Badge>
-                    }
-                  />
-                  <TooltipContent>
-                    A real interruption, not a simulated one: {f.kind.replace('_', ' ')} on {f.tool} {f.path}
-                    {f.nth > 1 ? ` (attempt ${f.nth})` : ''}.
-                  </TooltipContent>
-                </Tooltip>
-              ))}
-              {kinds.length === 0 && real.length === 0 ? (
+              {pub.length > 0 ? (
+                pub.map((f, i) => <FaultPublicBadge key={`${f.origin}-${f.kind}-${i}`} fault={f} />)
+              ) : (
+                <>
+                  {kinds.map((k) => (
+                    <FaultKindBadge key={k} kind={k} />
+                  ))}
+                  {real.map((f) => (
+                    <Tooltip key={`${f.kind}-${f.path}-${f.nth}`}>
+                      <TooltipTrigger
+                        render={
+                          <Badge variant="outline" className="border-rose-500/30 bg-rose-500/10 font-mono text-rose-700 dark:text-rose-300">
+                            <Zap aria-hidden /> real: {faultWords(f.kind)}
+                          </Badge>
+                        }
+                      />
+                      <TooltipContent>
+                        Real, not simulated: {faultWords(f.kind)} on {f.tool} {f.path}
+                        {f.nth > 1 ? ` (attempt ${f.nth})` : ''}.
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                </>
+              )}
+              {pub.length === 0 && kinds.length === 0 && real.length === 0 ? (
                 <span className="text-[12px] text-muted-foreground">none listed</span>
               ) : null}
             </div>
@@ -138,7 +149,7 @@ export function ScenarioTable({
       }),
       columnHelper.display({
         id: 'run',
-        header: () => <span className="whitespace-nowrap">Live run</span>,
+        header: 'Run',
         cell: ({ row }) => {
           const s = row.original
           const busy = starting === s.id
@@ -151,7 +162,7 @@ export function ScenarioTable({
                 onRun(s)
               }}
               disabled={!canRun || busy}
-              title={canRun ? `Start a live run of ${s.id}` : 'Harness unreachable'}
+              title={canRun ? `Start a live run of ${s.id}` : 'Live runs are offline'}
             >
               {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Play aria-hidden />}
               {busy ? 'Starting…' : 'Run'}
@@ -174,7 +185,7 @@ export function ScenarioTable({
                 e.stopPropagation()
                 onReplay(demo.id)
               }}
-              title={`Replay a recorded ${s.id} run (no backend needed)`}
+              title={`Replay a recorded ${s.id} run (no server needed)`}
             >
               <Rewind aria-hidden /> Replay
             </Button>
@@ -189,7 +200,7 @@ export function ScenarioTable({
                   </span>
                 }
               />
-              <TooltipContent>No recording bundled for this scenario yet.</TooltipContent>
+              <TooltipContent>No recording for this scenario yet.</TooltipContent>
             </Tooltip>
           )
         },
@@ -207,13 +218,13 @@ export function ScenarioTable({
 
   return (
     <section aria-label="Scenarios" className="w-full">
-      <div className="mb-2 flex items-baseline justify-between gap-3">
+      <div className="mb-3 space-y-1">
         <h2 className="text-sm font-medium">Scenarios</h2>
-        <span className="text-[12px] text-muted-foreground">
+        <p className="text-[12.5px] text-muted-foreground">
           {canRun
-            ? 'Run starts a live episode on the harness · Replay plays a recorded run in the browser'
-            : 'live runs need the harness; replays still work'}
-        </span>
+            ? 'Run starts a live run with the model chosen above. Replay plays a recorded run in the browser and needs no server.'
+            : 'Live runs are offline. Replay still works.'}
+        </p>
       </div>
       <div className="overflow-x-auto rounded-xl border border-border bg-card/30">
         <Table className="w-full min-w-[900px] table-fixed">
@@ -247,7 +258,7 @@ export function ScenarioTable({
             ) : table.getRowModel().rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={columns.length} className="py-8 text-center text-sm whitespace-normal text-muted-foreground">
-                  {error ? `No scenarios from the harness (${error}).` : 'No scenarios.'} Replays in the sidebar still work.
+                  {error ? `Could not load the scenarios (${error}).` : 'No scenarios.'} Recorded runs in the sidebar still work.
                 </TableCell>
               </TableRow>
             ) : (

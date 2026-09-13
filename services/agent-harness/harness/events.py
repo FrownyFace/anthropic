@@ -47,6 +47,23 @@ def _bound(value: Any, cap: int = config.LOG_VALUE_CAP) -> Any:
     return value
 
 
+#: Fields lifted out of `data` onto the unified log line, per event type (PLAN.md §2.5: the log must
+#: say WHAT happened — a bare `keys=[…]` makes the decisive lines unreadable in `modal app logs`).
+_LOG_FIELDS: dict[str, tuple[str, ...]] = {
+    "tool.call": ("tool", "mutating"),
+    "tool.result": ("tool", "is_error", "error_code", "outcome", "attempts", "duration_ms", "summary"),
+    "fault.fired": ("kind", "path", "mode", "origin", "layer"),
+    "interruption": ("layer", "code", "tool", "path", "planned", "resumed", "outcome_known"),
+    "run.resumed": ("worker_generation", "resumed_from_event_id", "dangling_tool_use_id"),
+    "episode.sandbox": ("sandbox_id", "status", "reason"),
+    "episode.reset": ("episode_id", "sandbox_id"),
+    "run.started": ("scenario_id", "model", "max_steps"),
+    "run.finished": ("status", "steps", "score", "evaluation_status", "duration_ms"),
+    "episode.evaluated": ("score", "passed"),
+    "llm.call": ("model", "attempt", "stop_reason", "request_id", "duration_ms"),
+}
+
+
 class EventSink:
     """Owns the RunRecord for the lifetime of a run; appends events to the Store as they happen."""
 
@@ -77,13 +94,19 @@ class EventSink:
         self._pending.append(ev)
         self.flush()
         if type != "log":
+            payload = data or {}
+            salient = {k: _bound(payload.get(k)) for k in _LOG_FIELDS.get(type, ())
+                       if payload.get(k) is not None}
+            if type == "tool.result" and isinstance(payload.get("error_class"), dict):
+                salient["error_class"] = payload["error_class"].get("label")
             _log.info(
                 type,
                 "event",
                 run_id=self.run_id,
                 step=ev["step"],
                 event_id=ev["id"],
-                keys=sorted((data or {}).keys()) or None,
+                keys=sorted(payload.keys()) or None,
+                **salient,
             )
         return ev
 

@@ -14,9 +14,9 @@ whether the agent recovered. The environment is framed as a tiny RL gym
 
 ## Try it in 60 seconds
 
-1. Open the live URL. Pick a scenario from the table (each row lists which fault kinds are in play, not where or when).
+1. Open the live URL. Pick a scenario from the table (each row lists the failure classes in play).
 2. Press **Run**. Watch the transcript stream: assistant reasoning, tool calls, outputs, fault badges; the
-   workspace column shows files, diffs, a timeline and logs.
+   workspace column shows files, diffs and logs.
 3. Read the score card: hidden tests (60%) + recovery checks (40%), e.g. *"verified the file before
    re-writing after the lost ack"* and *"exactly one changelog entry"*.
 4. No API quota? Press **Replay** on a scenario row — a recorded live run plays back (with a scrubber)
@@ -41,22 +41,39 @@ Three separately deployed Modal apps, three trust boundaries:
 | `services/sandbox-env` | gym state, fault plan, ledger, grader, Sandbox lifecycle | the provider key |
 | Modal Sandbox | the agent's shell and files | everything above; outbound network is blocked |
 
-Faults are applied **at the tool boundary** inside `sandbox-env`, so the shell the agent runs in
-cannot detect or read the plan. `ack_lost` performs the write, then withholds the acknowledgement —
-the agent must read the file back before deciding whether to retry. Because the task is an
-append-style edit, a careless retry produces a duplicate that the grader catches.
+The environment keeps its fault plan outside the command sandbox. Transient missing-file and
+denied-write faults are simulated **at the tool boundary**; the sticky missing-file case starts
+with the file absent. `ack_lost` performs the write, then substitutes a timeout-style tool error
+without breaking the connection. The agent must check the file before deciding whether to retry:
+a careless append retry produces a duplicate that the grader catches.
 
 ## Simulated vs. real failures
 
-The agent is never told whether a failure was injected; the UI and the evidence should always be. The
-contract for that is written: an `error_class` on every failing tool result (`origin: injected | staged |
-real`, the `layer` that really failed, a fixed human label), an `outcome` (`executed | failed |
-not_executed | unknown`), and run statuses `unevaluated` / `interrupted` for runs that could not be
-graded (`packages/common/faultline_common/schemas.py`, `docs/error-taxonomy.md`; injector semantics in
-`services/sandbox-env/FAULTS.md`). **Status:** the services do not emit these fields yet (`PLAN.md`
-§2.11). The planned `worker-crash` scenario is the real counterpart of `lost-ack`: kill the harness
-process while a write is in flight and have a fresh worker resume the same run and workspace. Its
-scenario definition exists; the crash/resume path is not implemented.
+The harness now emits `error_class` with failure origin (`injected | staged | real`), layer and
+human-readable label, plus command `outcome` (`executed | failed | not_executed | unknown`).
+`unevaluated` identifies unavailable grading; `interrupted` identifies an interruption that ended
+the run. The model receives the tool error, while the browser and evidence receive provenance.
+See [the error taxonomy](docs/error-taxonomy.md) and [fault semantics](services/sandbox-env/FAULTS.md).
+
+The **`worker-crash` scenario is implemented**: the harness process exits during a dispatched write,
+Modal retries the same run, and a fresh worker reconstructs the conversation from persisted events
+and reconnects to the existing episode. It supplies an unknown-outcome result for the pending call
+so the agent can check the workspace before continuing. In the saved live proof, worker generation
+advanced to 2, the ledger confirmed the write landed, and the final checks found exactly one release
+entry and the correct version, scoring 100/100.
+
+The independent interruption proof (`runs/20260913T002900Z_interruptions/` and a repeat,
+gitignored local evidence) passed 65/65 checks twice across worker crash, simulated lost-ack, sandbox
+loss, event conformance and a historical specimen. The driver is
+[scripts/prove_interruptions.py](scripts/prove_interruptions.py). These results are scoped to the tested runs:
+
+- The crash proof uses `write_file`; a real shell-append crash experiment still needs separate verification.
+- The trigger sleeps after dispatch, rather than waiting at a confirmed write-completion barrier.
+  The ledger establishes that the write landed in the captured run, not that every crash occurs after it.
+- Recovery assumes the environment and store survive. Forced persistence flushes still tolerate errors;
+  simultaneous storage failure can lose recovery state. This is not a universal exactly-once guarantee.
+- Four simulated-fault scenario replays are bundled; a worker-crash replay is not bundled yet (run it live).
+- Not yet hardened (PLAN §0): the gym's interruption route and run listing are not token-scoped, so grades are not tamper-proof against a forged report; historical runs were imported but not reclassified.
 
 ## Repo layout
 
@@ -89,10 +106,10 @@ python scripts/smoke_roundtrip.py --base https://<sandbox-env-url>     # one rea
 python scripts/run_episode_cli.py --scenario lost-ack                  # a full model run, live transcript, evidence in runs/
 services/sandbox-env/.venv/bin/python -m pytest services/sandbox-env/tests   # fault engine + grader tests (no Modal needed)
 services/agent-harness/.venv/bin/python -m pytest services/agent-harness/tests
-cd apps/web && pnpm i && pnpm dev                                      # UI; harness URL from public/config.json or VITE_HARNESS_URL
+cd apps/web && pnpm i && pnpm dev                                      # UI; set VITE_HARNESS_URL in apps/web/.env.development.local
 ```
 
-Configuration: `ANTHROPIC_MODEL` (default `claude-haiku-4-5`; the UI can pick Sonnet 5 / Opus 5),
+Configuration: the model is fixed to `claude-haiku-4-5` (any other `model` in a run request is rejected with 400),
 `SANDBOX_ENV_URL`, `HARNESS_URL`, `LOG_LEVEL=debug` for argument/output dumps. See `.env.example`.
 
 ## Verifying it

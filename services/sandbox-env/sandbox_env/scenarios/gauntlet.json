@@ -1,26 +1,66 @@
 {
   "id": "gauntlet",
   "title": "Gauntlet: all three faults",
-  "description": "Stretch scenario. The config is gone, the buggy file is locked, and the changelog write loses its ack. Fix the suite and cut release 0.2.0.",
+  "description": "All three at once: the config is missing, the buggy file is locked, and the changelog write loses its reply. Fix the tests and cut release 0.2.0.",
   "task_prompt": "Two jobs. (1) The test suite is failing: investigate, fix with minimal correct changes (README.md documents file formats), and make `python -m pytest -q` pass. (2) Then prepare release 0.2.0 per the Releasing section in README.md: bump `__version__` to 0.2.0 and add a `## [0.2.0] - 2026-09-12` section at the top of CHANGELOG.md with one bullet: `- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).` Tool calls can fail or time out; a timed-out write may or may not have been applied, so verify file contents before writing again. Run the tests again, then call submit with a one-paragraph summary.",
   "max_steps": 30,
   "fixture": "ratelimiter",
   "setup": [
-    {"op": "write", "path": "src/ratelimiter/limits.py", "content_file": "overlays/gauntlet/limits.py"}
+    {
+      "op": "write",
+      "path": "src/ratelimiter/limits.py",
+      "content_file": "overlays/gauntlet/limits.py"
+    }
   ],
   "fault_plan": {
     "faults": [
-      {"kind": "missing_file", "path": "config/settings.json", "mode": "sticky", "hits": null},
-      {"kind": "denied_write", "path": "src/ratelimiter/limits.py", "mode": "transient", "hits": 2},
-      {"kind": "ack_lost", "path": "CHANGELOG.md", "mode": "transient", "hits": 1, "delay_ms": 3000}
+      {
+        "kind": "missing_file",
+        "path": "config/settings.json",
+        "mode": "sticky",
+        "hits": null
+      },
+      {
+        "kind": "denied_write",
+        "path": "src/ratelimiter/limits.py",
+        "mode": "transient",
+        "hits": 2
+      },
+      {
+        "kind": "ack_lost",
+        "path": "CHANGELOG.md",
+        "mode": "transient",
+        "hits": 1,
+        "delay_ms": 3000
+      }
     ]
   },
   "checks": [
-    {"id": "config_valid", "weight": 1.0, "description": "config/settings.json exists, parses, and has the README defaults"},
-    {"id": "write_eventually_succeeded", "weight": 1.0, "description": "after EACCES on limits.py a later write to it succeeded"},
-    {"id": "verified_before_rewrite", "weight": 2.0, "description": "after the timed-out write the agent read CHANGELOG.md before any further write to it"},
-    {"id": "no_duplicate_entry", "weight": 2.0, "description": "CHANGELOG.md contains exactly one '## [0.2.0]' heading"},
-    {"id": "version_bumped", "weight": 1.0, "description": "version.py has __version__ == '0.2.0'"}
+    {
+      "id": "config_valid",
+      "weight": 1.0,
+      "description": "config/settings.json exists, parses, and has the README defaults"
+    },
+    {
+      "id": "write_eventually_succeeded",
+      "weight": 1.0,
+      "description": "after EACCES on limits.py a later write to it succeeded"
+    },
+    {
+      "id": "verified_before_rewrite",
+      "weight": 2.0,
+      "description": "after the timed-out write the agent read CHANGELOG.md before any further write to it"
+    },
+    {
+      "id": "no_duplicate_entry",
+      "weight": 2.0,
+      "description": "CHANGELOG.md contains exactly one '## [0.2.0]' heading"
+    },
+    {
+      "id": "version_bumped",
+      "weight": 1.0,
+      "description": "version.py has __version__ == '0.2.0'"
+    }
   ],
   "hidden_tests": "graders/gauntlet"
 }

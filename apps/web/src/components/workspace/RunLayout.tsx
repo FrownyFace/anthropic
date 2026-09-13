@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useDefaultLayout, usePanelRef, type LayoutStorage } from 'react-resizable-panels'
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
@@ -51,6 +51,25 @@ export function RunLayout({
     storage,
     onlySaveAfterUserInteractions: true,
   })
+  // A remembered split is only reused when the workspace was actually visible in it: a collapsed
+  // or near-zero workspace is never restored, so every new conversation or replay opens with the
+  // panel on screen (the user can still collapse it for the current page).
+  const restoredLayout = useMemo(() => {
+    const w = defaultLayout?.workspace
+    return defaultLayout && typeof w === 'number' && w >= 15 ? defaultLayout : undefined
+  }, [defaultLayout])
+  // Ignore the panel's resize callback until it has mounted with its initial size, so a transient
+  // collapsed measurement during mount cannot flip the open state.
+  const mounted = useRef(false)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      mounted.current = true
+    }, 0)
+    return () => {
+      clearTimeout(t)
+      mounted.current = false
+    }
+  }, [])
 
   // Keep the imperative panel in step with the `open` state (top-bar toggle, breakpoint changes).
   useEffect(() => {
@@ -81,7 +100,7 @@ export function RunLayout({
   return (
     <ResizablePanelGroup
       orientation="horizontal"
-      defaultLayout={defaultLayout}
+      defaultLayout={restoredLayout}
       onLayoutChanged={onLayoutChanged}
       className="h-auto min-h-0 flex-1"
     >
@@ -103,6 +122,7 @@ export function RunLayout({
         panelRef={panelRef}
         onResize={() => {
           // Dragging the handle to zero collapses the panel; reflect that in the toggle state.
+          if (!mounted.current) return
           const collapsed = panelRef.current?.isCollapsed() ?? false
           if (collapsed === open) onOpenChange(!collapsed)
         }}

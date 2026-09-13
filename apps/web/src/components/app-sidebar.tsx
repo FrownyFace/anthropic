@@ -68,10 +68,10 @@ const HEALTH_DOT: Record<HealthPhase, string> = {
 }
 
 const HEALTH_WORD: Record<HealthPhase, string> = {
-  resolving: 'resolving…',
-  checking: 'checking…',
-  reachable: 'reachable',
-  unreachable: 'unreachable',
+  resolving: 'connecting…',
+  checking: 'waking up…',
+  reachable: 'online',
+  unreachable: 'offline',
 }
 
 function dayBucket(iso: string, now = new Date()): string {
@@ -239,13 +239,13 @@ export function AppSidebar({
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Replays</SidebarGroupLabel>
+          <SidebarGroupLabel>Recorded runs</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {DEMOS.map((d) => (
                 <SidebarMenuItem key={d.id}>
                   <SidebarMenuButton
-                    tooltip={`Replay ${d.label}`}
+                    tooltip={`Recorded run: ${d.label}`}
                     isActive={d.id === activeReplay}
                     render={<a {...linkProps({ kind: 'replay', demoId: d.id })} />}
                   >
@@ -276,7 +276,7 @@ export function AppSidebar({
                       </AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left leading-tight">
-                      <span className="truncate text-[13px]">Browser user</span>
+                      <span className="truncate text-[13px]">This browser</span>
                       <span className="truncate font-mono text-[11px] text-muted-foreground">
                         {shortId(userId)}
                       </span>
@@ -326,7 +326,7 @@ export function AppSidebar({
                     </div>
                     {harness.health?.has_provider_key === false ? (
                       <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-300">
-                        <ShieldCheck className="size-3" aria-hidden /> no provider key on the api function
+                        <ShieldCheck className="size-3" aria-hidden /> no model API key on the web-facing API
                       </div>
                     ) : null}
                   </div>

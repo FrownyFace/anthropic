@@ -26,13 +26,11 @@ import type {
   ConversationRunResponse,
   ConversationSummary,
   CreateConversationRequest,
-  CreateRunResponse,
   Event,
   EventType,
   Health,
   MeResponse,
   RunRecord,
-  RunRequest,
   RunStatus,
   Scenario,
   UpdateConversationRequest,
@@ -66,10 +64,27 @@ export class HarnessError extends Error {
     message: string,
     readonly status?: number,
     readonly url?: string,
+    /** The harness's own error text (`{"error": …}` / `{"detail": …}`), verbatim, when the body carried one. */
+    readonly detail?: string,
   ) {
     super(message)
     this.name = 'HarnessError'
   }
+}
+
+/** The harness's error sentence from a JSON error body (`error` or `detail`), else null. */
+function harnessDetail(body: string): string | null {
+  try {
+    const v = JSON.parse(body) as unknown
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const o = v as Record<string, unknown>
+      if (typeof o.error === 'string') return o.error
+      if (typeof o.detail === 'string') return o.detail
+    }
+  } catch {
+    /* not JSON */
+  }
+  return null
 }
 
 /** True for a HarnessError carrying HTTP 404 — the harness's "not yours / not there". */
@@ -113,16 +128,18 @@ async function jsonFetch<T>(
   const durMs = Date.now() - t0
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    // 404 is an expected answer for routes a harness build may not have yet (/me, /conversations).
+    // 404 is the harness's "not yours / not there" (no existence oracle): a warning, not an error.
     log[res.status === 404 ? 'warn' : 'error']('http.response', 'non-2xx', {
       url,
       status: res.status,
       dur_ms: durMs,
     })
+    const detail = harnessDetail(body)
     throw new HarnessError(
-      `${res.status} ${res.statusText} from ${url}${body ? `: ${body.slice(0, 400)}` : ''}`,
+      `${res.status} ${res.statusText} from ${url}${detail ? `: ${detail}` : body ? `: ${body.slice(0, 400)}` : ''}`,
       res.status,
       url,
+      detail ?? undefined,
     )
   }
   log.debug('http.response', 'ok', { url, status: res.status, dur_ms: durMs })
@@ -177,19 +194,11 @@ export class HarnessClient {
   readonly userId: string | null
   private readonly fetchImpl: typeof fetch
 
-  /**
-   * `new HarnessClient(base, { userId, fetchImpl })`. The older positional form
-   * `new HarnessClient(base, fetchImpl)` is still accepted.
-   */
-  constructor(base: string, opts: HarnessClientOptions | typeof fetch = {}) {
+  /** `new HarnessClient(base, { userId, fetchImpl })`. */
+  constructor(base: string, opts: HarnessClientOptions = {}) {
     this.base = base
-    if (typeof opts === 'function') {
-      this.fetchImpl = opts
-      this.userId = null
-    } else {
-      this.fetchImpl = opts.fetchImpl ?? fetch
-      this.userId = opts.userId ?? null
-    }
+    this.fetchImpl = opts.fetchImpl ?? fetch
+    this.userId = opts.userId ?? null
   }
 
   /** Headers every JSON request carries (identity). Also used by the polling fallback. */
@@ -228,14 +237,8 @@ export class HarnessClient {
   }
 
   // ---------------------------------------------------------------- runs
-
-  createRun(req: RunRequest, signal?: AbortSignal): Promise<CreateRunResponse> {
-    log.info('run.create', 'POST /runs', {
-      scenario_id: req.scenario_id,
-      model: req.model ?? null,
-    })
-    return this.send<CreateRunResponse>('POST', '/runs', req, signal)
-  }
+  // Runs are always started inside a conversation (createConversationRun); a bare POST /runs is
+  // not part of the product surface.
 
   getRun(runId: string, signal?: AbortSignal): Promise<RunRecord> {
     return this.get<RunRecord>(`/runs/${encodeURIComponent(runId)}`, signal)
@@ -492,6 +495,7 @@ export function subscribeRun(opts: SubscribeOptions): Subscription {
     const rotate = (why: string) => {
       source.close()
       if (es === source) es = null
+      clearTimer() // never orphan a pending reconnect timer
       log.info('stream.rotate', why, {
         run_id: runId,
         delivered: deliveredThisStream,
@@ -520,6 +524,7 @@ export function subscribeRun(opts: SubscribeOptions): Subscription {
     for (const t of EVENT_TYPES) source.addEventListener(t, handle as EventListener)
     source.addEventListener('done', ((e: MessageEvent) => {
       if (closed) return
+      if (es !== source) return // a frame from a stream we already rotated away from
       const payload = parseDone(e?.data)
       if (doneMeansReconnect(payload)) {
         rotate('server closed its ~110 s window (`done` reason=window); reconnecting')

@@ -11,6 +11,7 @@
 import { useId, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, X } from 'lucide-react'
 
+import { gradeOf } from '@/lib/runStatus'
 import type { Check as CheckResult, EvaluateResponse } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -20,10 +21,22 @@ export interface ScoreRowsProps {
   evaluation: EvaluateResponse
 }
 
-export function scoreTone(score: number): string {
-  if (score >= 85) return 'text-emerald-700 dark:text-emerald-300'
-  if (score >= 50) return 'text-amber-700 dark:text-amber-300'
-  return 'text-rose-700 dark:text-rose-300'
+type HeadlineTone = 'ok' | 'warn' | 'fail'
+
+/**
+ * The headline is green only for a real pass — `gradeOf`: hidden tests passed AND every recovery
+ * check ok (lib/runStatus.ts). Tests passed with a failed check is amber ("graded with
+ * failures"); failed tests are red. The score number alone never decides the colour.
+ */
+function headlineTone(evaluation: EvaluateResponse): HeadlineTone {
+  if (gradeOf(evaluation) === 'passed') return 'ok'
+  return evaluation.passed ? 'warn' : 'fail'
+}
+
+const HEADLINE: Record<HeadlineTone, { number: string; pill: string; word: string }> = {
+  ok: { number: 'text-emerald-700 dark:text-emerald-300', pill: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', word: 'Passed' },
+  warn: { number: 'text-amber-700 dark:text-amber-300', pill: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', word: 'Graded with failures' },
+  fail: { number: 'text-rose-700 dark:text-rose-300', pill: 'bg-rose-500/10 text-rose-700 dark:text-rose-300', word: 'Failed' },
 }
 
 function RoundBadge({ ok }: { ok: boolean }) {
@@ -139,15 +152,29 @@ export function ScoreRows({ evaluation }: ScoreRowsProps) {
   const testsOk = tests.failed === 0 && tests.errors === 0
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const toggle = (key: string) => setOpen((cur) => ({ ...cur, [key]: !cur[key] }))
+  const grade = gradeOf(evaluation)
+  const headline = HEADLINE[headlineTone(evaluation)]
 
   return (
-    <div className="flex w-full flex-col gap-2" data-slot="score-rows">
+    <div className="flex w-full flex-col gap-2" data-slot="score-rows" data-grade={grade}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-1">
-        <span className={cn('font-mono text-3xl tabular-nums', scoreTone(evaluation.score))} aria-label="score">
+        <span className={cn('font-mono text-3xl tabular-nums', headline.number)} aria-label="score">
           {Math.round(evaluation.score)}
         </span>
         <span className="text-[12.5px] text-ink-3">/ 100</span>
-        <Pill ok={evaluation.passed}>{evaluation.passed ? 'Passed' : 'Failed'}</Pill>
+        <span
+          className={cn('inline-flex h-5.5 shrink-0 items-center rounded-full px-2 text-[11.5px] font-medium', headline.pill)}
+          data-slot="grade-pill"
+          title={
+            grade === 'passed'
+              ? 'Hidden tests passed and every recovery check is ok.'
+              : evaluation.passed
+                ? 'Hidden tests passed but a recovery check failed.'
+                : 'Hidden tests failed.'
+          }
+        >
+          {headline.word}
+        </span>
         <span className="font-mono text-[11.5px] text-ink-3 tabular-nums">
           {tests.passed} passed · {tests.failed} failed · {tests.errors} errors
         </span>

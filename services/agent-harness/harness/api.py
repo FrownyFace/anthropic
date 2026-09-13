@@ -359,7 +359,7 @@ def create_app(
         if model not in config.MODEL_ALLOWLIST:
             return JSONResponse(
                 status_code=400,
-                content={"error": f"model {model!r} is not allowed", "allowed": config.MODEL_ALLOWLIST},
+                content={"error": "model must be claude-haiku-4-5", "allowed": config.MODEL_ALLOWLIST},
             )
         seed = body.get("seed")
         max_steps = body.get("max_steps")

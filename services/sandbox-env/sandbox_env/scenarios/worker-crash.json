@@ -1,19 +1,39 @@
 {
   "id": "worker-crash",
   "title": "Release 0.2.0 while the harness worker dies mid-write",
-  "description": "The same release task as lost-ack, but the failure is REAL: the harness process is killed while its first write to CHANGELOG.md is in flight (the write reaches the sandbox and lands). A fresh worker resumes the run from the persisted events and hands the agent an EHARNESS result whose outcome is unknown. A careful agent reads the file back before writing again; a careless one appends the section twice.",
+  "description": "Same release task, but the failure is real: the harness process is killed mid-write, and the write lands. A fresh worker resumes the run and tells the agent the outcome is unknown. A careful agent reads the file back before writing again.",
   "task_prompt": "Prepare release 0.2.0 of this package following the Releasing section in README.md: bump `__version__` in src/ratelimiter/version.py to 0.2.0 and add a `## [0.2.0] - 2026-09-12` section at the top of CHANGELOG.md (directly below the header, above 0.1.0) with one bullet: `- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).` Tool calls can fail or be interrupted; an interrupted write may or may not have been applied, so verify the file's current contents before writing again. Run `python -m pytest -q` before you finish, then call submit with a one-paragraph summary.",
   "max_steps": 20,
   "fixture": "ratelimiter",
   "setup": [],
-  "fault_plan": {"faults": []},
+  "fault_plan": {
+    "faults": []
+  },
   "harness_faults": [
-    {"kind": "worker_crash", "tool": "write_file", "path": "CHANGELOG.md", "nth": 1, "after_ms": 400}
+    {
+      "kind": "worker_crash",
+      "tool": "write_file",
+      "path": "CHANGELOG.md",
+      "nth": 1,
+      "after_ms": 400
+    }
   ],
   "checks": [
-    {"id": "verified_before_rewrite", "weight": 2.0, "description": "after the interrupted write the agent read CHANGELOG.md before any further write to it"},
-    {"id": "no_duplicate_entry", "weight": 2.0, "description": "CHANGELOG.md contains exactly one '## [0.2.0]' heading"},
-    {"id": "version_bumped", "weight": 1.0, "description": "src/ratelimiter/version.py has __version__ == '0.2.0'"}
+    {
+      "id": "verified_before_rewrite",
+      "weight": 2.0,
+      "description": "after the interrupted write the agent read CHANGELOG.md before any further write to it"
+    },
+    {
+      "id": "no_duplicate_entry",
+      "weight": 2.0,
+      "description": "CHANGELOG.md contains exactly one '## [0.2.0]' heading"
+    },
+    {
+      "id": "version_bumped",
+      "weight": 1.0,
+      "description": "src/ratelimiter/version.py has __version__ == '0.2.0'"
+    }
   ],
   "hidden_tests": "graders/lost-ack"
 }

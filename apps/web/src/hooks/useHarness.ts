@@ -3,11 +3,11 @@
  * things Home needs from it: `/health` and `/scenarios`.
  *
  * Both are allowed to fail. A dead harness must still leave a usable page — the bundled replay
- * is the whole reason demo mode exists — so failures land in `healthError` / `scenariosError`
+ * is the whole reason demo mode exists — so failures land in `phase` / `scenariosError`
  * rather than throwing.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useIdentity } from '@/hooks/useIdentity'
 import { HarnessClient } from '@/lib/api'
@@ -33,29 +33,20 @@ export function healthPhase(hasClient: boolean, health: Health | null, healthErr
 }
 
 export interface HarnessState {
-  /** Resolved harness origin, or null while resolving. */
-  base: string | null
   /** `/health` answered and reported ok — the only gate on starting a live run. */
   reachable: boolean
   /** resolving → checking → reachable | unreachable. */
   phase: HealthPhase
-  /** Where the URL came from: window | config.json | build-env | default. */
-  source: ResolvedConfig['source'] | null
   health: Health | null
-  healthError: string | null
   scenarios: Scenario[]
   scenariosError: string | null
   loading: boolean
-  refresh: () => void
   /** Bound to the current identity: every request carries `X-Faultline-User`. Null until the URL resolves. */
   client: HarnessClient | null
-  /** The anonymous browser id the client sends. */
-  userId: string
 }
 
 interface Probe<T> {
   client: HarnessClient
-  epoch: number
   value: T | null
   error: string | null
 }
@@ -63,10 +54,9 @@ interface Probe<T> {
 export function useHarness(): HarnessState {
   const { userId } = useIdentity()
   const [cfg, setCfg] = useState<ResolvedConfig | null>(null)
-  /** Last answers, keyed by the (client, refresh epoch) that produced them; stale keys read as "not yet". */
+  /** Last answers, keyed by the client that produced them; a stale key reads as "not yet". */
   const [healthProbe, setHealthProbe] = useState<Probe<Health> | null>(null)
   const [scenariosProbe, setScenariosProbe] = useState<Probe<Scenario[]> | null>(null)
-  const [nonce, setNonce] = useState(0)
 
   // 1. Resolve the base URL once.
   useEffect(() => {
@@ -91,7 +81,7 @@ export function useHarness(): HarnessState {
     [cfg, userId],
   )
 
-  // 3. Probe /health and /scenarios whenever the client changes or refresh() is called.
+  // 3. Probe /health and /scenarios whenever the client changes.
   useEffect(() => {
     if (!client) return
     let cancelled = false
@@ -103,7 +93,7 @@ export function useHarness(): HarnessState {
       .health()
       .then((value) => {
         if (cancelled) return
-        setHealthProbe({ client, epoch: nonce, value, error: null })
+        setHealthProbe({ client, value, error: null })
         log.info('health.ok', 'harness reachable', {
           model_default: value.model_default ?? null,
           has_provider_key: value.has_provider_key,
@@ -111,7 +101,7 @@ export function useHarness(): HarnessState {
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setHealthProbe({ client, epoch: nonce, value: null, error: String(err) })
+        setHealthProbe({ client, value: null, error: String(err) })
         log.warn('health.error', 'harness unreachable', { error: String(err) })
       })
 
@@ -119,48 +109,40 @@ export function useHarness(): HarnessState {
       .scenarios()
       .then((value) => {
         if (cancelled) return
-        setScenariosProbe({ client, epoch: nonce, value, error: null })
+        setScenariosProbe({ client, value, error: null })
         log.info('scenarios.loaded', 'catalogue loaded', { count: value.length })
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setScenariosProbe({ client, epoch: nonce, value: null, error: String(err) })
+        setScenariosProbe({ client, value: null, error: String(err) })
         log.warn('scenarios.error', 'GET /scenarios failed', { error: String(err) })
       })
 
     return () => {
       cancelled = true
     }
-  }, [client, nonce])
-
-  const refresh = useCallback(() => setNonce((n) => n + 1), [])
+  }, [client])
 
   // 2b. No URL at all (no /config.json, no VITE_HARNESS_URL): say so instead of spinning forever.
   const noUrl = !!cfg && !cfg.harnessUrl
-  const healthCurrent = !!client && !!healthProbe && healthProbe.client === client && healthProbe.epoch === nonce
-  const scenariosCurrent =
-    !!client && !!scenariosProbe && scenariosProbe.client === client && scenariosProbe.epoch === nonce
+  const healthCurrent = !!client && !!healthProbe && healthProbe.client === client
+  const scenariosCurrent = !!client && !!scenariosProbe && scenariosProbe.client === client
 
   const health = healthCurrent ? healthProbe.value : null
   const healthError = noUrl ? NO_URL_ERROR : healthCurrent ? healthProbe.error : null
   const scenarios = scenariosCurrent ? (scenariosProbe.value ?? []) : []
   const scenariosError = scenariosCurrent ? scenariosProbe.error : null
 
-  // Loading until the URL resolves, and again whenever the client or the refresh epoch moves on.
+  // Loading until the URL resolves, and again whenever the client moves on.
   const loading = !cfg || (client !== null && !(healthCurrent && scenariosCurrent))
 
   return {
-    base: cfg?.harnessUrl ?? null,
     reachable: health?.ok === true,
     phase: healthPhase(client !== null, health, healthError),
-    source: cfg?.source ?? null,
     health,
-    healthError,
     scenarios,
     scenariosError,
     loading,
-    refresh,
     client,
-    userId,
   }
 }

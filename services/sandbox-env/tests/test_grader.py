@@ -13,8 +13,8 @@ import pytest
 
 from faultline_common.schemas import Check, FaultFired, LedgerEntry, TestsResult
 from sandbox_env import grader
-from sandbox_env.scenarios import CheckSpec
-from sandbox_env.workspace import FakeWorkspace
+from sandbox_env.scenarios import CheckSpec, get_bundle
+from sandbox_env.workspace import ExecResult, FakeWorkspace
 
 CONFIG = "config/settings.json"
 README = "README.md"
@@ -440,3 +440,50 @@ def test_no_summary_line_is_never_scored_as_a_pass() -> None:
     assert tests.errors >= 1
     assert grader.tests_pass(tests) is False
     assert "no summary line" in tests.output
+
+
+# --------------------------------------------------------------------------- hidden-test integrity
+# The hidden tests are the 60-point half of the score. Everything the agent can write is inside
+# /workspace, so anything pytest loads from /workspace is attacker-controlled input to the grader.
+
+
+def test_pytest_command_cannot_load_an_agent_written_conftest() -> None:
+    """GRADING.md step 2's `--confcutdir`, and why it is not decoration.
+
+    Measured under the sandbox's pinned pytest 7.4.4, with a four-line
+    `pytest_collection_modifyitems` at /workspace/conftest.py: without the flag both hidden tests
+    were dropped from the run and the grader read "6 passed", exit 0 -> a full 60 points for a repo
+    nobody checked. With it, `/workspace/conftest.py` (an ancestor of the eval dir) is not loaded
+    while `/workspace/tests/conftest.py` still is, so the fixture's own `root` fixture keeps working.
+    """
+    assert "--confcutdir=/workspace/.faultline_eval" in grader.PYTEST_CMD
+    assert grader.PYTEST_CMD.index("--confcutdir") < grader.PYTEST_CMD.index(" tests ")
+
+
+def test_hidden_tests_are_unpacked_into_a_clean_directory() -> None:
+    """`.faultline_eval` is in SKIP_DIRS, so anything planted there is invisible to observe.
+
+    `untar` merges into its destination, and a conftest.py at that exact path sits INSIDE
+    confcutdir, so it would be loaded for the hidden tests themselves.
+    """
+    planted = ".faultline_eval/conftest.py"
+    ws = FakeWorkspace({planted: "def pytest_collection_modifyitems(items):\n    items[:] = []\n"})
+    ws.responses["pytest"] = ExecResult(stdout="8 passed in 0.30s\n", exit_code=0)
+
+    calls: list[tuple[str, str]] = []
+    at_run: list[list[str]] = []
+    real_rm, real_up, real_run = ws.rmtree_abs, ws.upload_tar, ws.run
+    ws.rmtree_abs = lambda p: (calls.append(("rmtree", p)), real_rm(p))[1]  # type: ignore[method-assign]
+    ws.upload_tar = lambda d, dest: (calls.append(("upload", dest)), real_up(d, dest))[1]  # type: ignore[method-assign]
+    ws.run = lambda c, timeout_s: (at_run.append(sorted(ws.files)), real_run(c, timeout_s))[1]  # type: ignore[method-assign]
+
+    grader.run_hidden_tests(ws, get_bundle("lost-ack"))
+
+    assert [c[0] for c in calls][:2] == ["rmtree", "upload"], f"wipe must precede the upload: {calls}"
+    assert {c[1] for c in calls} == {"/workspace/.faultline_eval"}
+    assert planted not in at_run[0], "the planted conftest was still there when pytest ran"
+
+
+def test_pytest_timeout_leaves_room_under_the_modal_request_cap() -> None:
+    """`evaluate` is one web request: upload + pytest + rm + the file checks, capped at 150 s."""
+    assert grader.PYTEST_TIMEOUT_S <= 110

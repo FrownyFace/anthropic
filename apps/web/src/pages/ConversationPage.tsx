@@ -18,8 +18,8 @@ import { useStartRun } from '@/hooks/useStartRun'
 import { getLogger } from '@/lib/log'
 import { isTerminal } from '@/lib/reducer'
 import { gradeOf, statusTitle, statusTone } from '@/lib/runStatus'
-import { transcriptFromMessages, transcriptFromViewState } from '@/lib/transcript'
-import { DEFAULT_MODEL, MODEL_ALLOWLIST, type RunSummary } from '@/lib/types'
+import { overlayFromViewState, transcriptFromMessages, transcriptFromViewState } from '@/lib/transcript'
+import { allowedModel, DEFAULT_MODEL, MODEL_ALLOWLIST, type RunSummary } from '@/lib/types'
 
 const log = getLogger('web')
 
@@ -70,9 +70,10 @@ export function ConversationPage({
 }) {
   const { detail, loading, error, refresh } = useConversation(harness.client, conversationId)
   const [workspaceOpen, setWorkspaceOpen] = useWorkspaceOpen()
-  // The user's pick wins; before one, the harness's default (once /health answers), else ours.
+  // The user's pick wins; before one, the harness's default (once /health answers) — but only when
+  // it is on the allowlist — else ours.
   const [modelChoice, setModel] = useState<string | null>(null)
-  const model = modelChoice ?? harness.health?.model_default ?? DEFAULT_MODEL
+  const model = allowedModel(modelChoice) ?? allowedModel(harness.health?.model_default) ?? DEFAULT_MODEL
   const [seed, setSeed] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
   const { start, busy, error: startError } = useStartRun(harness, conversations)
@@ -129,17 +130,14 @@ export function ConversationPage({
     [detail, selected],
   )
   const persisted = !!detail && !!selected && isTerminal(selected.status) && messagesForRun.length > 0 && !live
-  // The messages projection has no evaluation or run error; overlay them from the run record the
-  // view was seeded with (only when that record is this run's — the view resets on switch).
+  // The messages projection has no evaluation, run error, error class, interruptions or resumes;
+  // overlay them from the run record the view was seeded with (only when that record is this
+  // run's — the view resets on switch).
   const seeded = !!selected && rv.state.runId === selected.id
   const transcript = useMemo(
     () =>
       persisted && detail && selected
-        ? transcriptFromMessages(
-            messagesForRun,
-            selected,
-            seeded ? { evaluation: rv.state.evaluation, error: rv.state.error, status: rv.state.status } : {},
-          )
+        ? transcriptFromMessages(messagesForRun, selected, seeded ? overlayFromViewState(rv.state) : {})
         : transcriptFromViewState(rv.state, live),
     [persisted, detail, selected, messagesForRun, rv.state, live, seeded],
   )

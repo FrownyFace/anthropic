@@ -189,9 +189,21 @@ def create_app() -> FastAPI:
 
     # Manual trigger for the same sweep that runs on every reset. Handy in a demo, and it makes the
     # guardrail testable from outside without waiting for someone to press Run.
+    #
+    # `ttl_s` may only make the sweep LESS aggressive. This route is unauthenticated on a public
+    # URL (auth is a stated non-goal, PLAN.md §1), and `?ttl_s=1` meant "terminate the sandbox of
+    # every episode older than one second" — i.e. anyone who found the URL, or any script with a
+    # stale copy-paste, could end every live run in the workspace from outside. That is the same
+    # failure as an unsafe `reap` (run r_ccda8780cbee) with a lower bar to reach it. Shortening the
+    # TTL is an operator action: `modal run …::sweep --ttl-s 600` still does it, behind Modal auth.
     @app.post("/episodes/sweep")
     def sweep_episodes(ttl_s: int | None = None) -> dict[str, Any]:
-        return episodes.sweep(ttl_s=ttl_s)
+        effective = None if ttl_s is None else max(int(ttl_s), episodes.EPISODE_TTL_S)
+        if ttl_s is not None and effective != ttl_s:
+            log.warn("episode.sweep_ttl_clamped",
+                     f"ttl_s={ttl_s} raised to the configured floor {effective}s",
+                     requested_ttl_s=ttl_s, ttl_s=effective)
+        return episodes.sweep(ttl_s=effective)
 
     @app.get("/episodes/{episode_id}", response_model=ObserveResponse)
     def get_episode(episode_id: str) -> Any:

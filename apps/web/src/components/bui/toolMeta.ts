@@ -4,10 +4,45 @@
  * parts to show. No React components here (keeps fast refresh happy).
  */
 
-import { FileText, FolderTree, PenLine, Send, Terminal, type LucideIcon } from 'lucide-react'
+import {
+  Ban,
+  Check,
+  CircleQuestionMark,
+  FileText,
+  FolderTree,
+  LoaderCircle,
+  PenLine,
+  Send,
+  Terminal,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 
+import type { CallStatusKind } from '@/lib/callStatus'
 import { callTouches, normalisePath, type ToolCallView, type ToolResultView } from '@/lib/reducer'
 import type { FileDiff } from '@/lib/types'
+
+export interface StatusGlyph {
+  /** null: the state has no icon (a pending call is a hollow dot on the rail, nothing on the pill). */
+  Icon: LucideIcon | null
+  /** Accessible name of the rail glyph (`role="img"`). */
+  label: string
+  /** Colour on the rail; the status pill colours by tone instead. */
+  railClassName: string
+}
+
+/**
+ * One icon per call status (`lib/callStatus.ts`), shared by the ThinkingTrace rail and the
+ * ToolCallChips status pill so an unknown outcome is a question mark — never a cross — in both.
+ */
+export const STATUS_GLYPH: Record<CallStatusKind, StatusGlyph> = {
+  running: { Icon: LoaderCircle, label: 'running', railClassName: 'text-ink-2' },
+  pending: { Icon: null, label: 'pending', railClassName: 'text-ink-3' },
+  ok: { Icon: Check, label: 'ok', railClassName: 'text-ink-3' },
+  failed: { Icon: X, label: 'error', railClassName: 'text-rose-700 dark:text-rose-300' },
+  unknown: { Icon: CircleQuestionMark, label: 'unknown', railClassName: 'text-amber-700 dark:text-amber-300' },
+  not_executed: { Icon: Ban, label: 'not executed', railClassName: 'text-amber-700 dark:text-amber-300' },
+}
 
 export const TOOL_ICON: Record<string, LucideIcon> = {
   run_command: Terminal,
@@ -27,6 +62,11 @@ export const TOOL_LABEL: Record<string, string> = {
 
 export function toolLabel(tool: string): string {
   return TOOL_LABEL[tool] ?? tool
+}
+
+/** DOM id of a tool call's expandable row (ToolCallChips), so an interruption callout can link to it. */
+export function toolCallDomId(toolUseId: string): string {
+  return `tool-call-${toolUseId}`
 }
 
 /** One-line description of the call: the command, the path, or the raw input. */
@@ -55,7 +95,7 @@ export interface ResultPart {
   code?: { filename: string | null }
 }
 
-/** Same parts the timeline card shows, in the same order. */
+/** The result parts an expanded tool-call row shows, in display order. */
 export function resultParts(result: ToolResultView, path: string | null): ResultPart[] {
   const parts: ResultPart[] = []
   if (result.errorText) parts.push({ label: result.errorCode ?? 'error', body: result.errorText, tone: 'error' })

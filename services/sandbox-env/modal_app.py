@@ -218,10 +218,14 @@ def reap(force: bool = False, dry_run: bool = False, keep_active: bool | None = 
 
 @app.function(image=IMAGE, timeout=300)
 def sweep(ttl_s: int | None = None) -> dict:
-    """Run the episode TTL sweep out of band (`modal run …::sweep --ttl-s 600`)."""
+    """Run the episode TTL sweep out of band (`modal run …::sweep --ttl-s 600`).
+
+    `max_actions=0` lifts the per-sweep termination budget that keeps the reset path inside Modal's
+    web request cap: this function has its own 300 s timeout and nobody is waiting on a browser.
+    """
     from sandbox_env import episodes as _episodes
 
-    return _episodes.sweep(ttl_s=ttl_s)
+    return _episodes.sweep(ttl_s=ttl_s, max_actions=0)
 
 
 @app.local_entrypoint()

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Database, Radio } from 'lucide-react'
+import { Database, Radio, RefreshCw, ServerOff, Zap } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { TransportState } from '@/lib/api'
 import { fmtDuration, fmtTokens } from '@/lib/format'
+import { sandboxChipText, sandboxChipTitle, sandboxLoss, workerChip } from '@/lib/interruptions'
 import { elapsedMs, faultCount, recoveredCount, type ViewState } from '@/lib/reducer'
 import { gradeOf, statusTitle, statusTone } from '@/lib/runStatus'
 
@@ -17,6 +18,9 @@ const SOURCE_LABEL: Record<TranscriptSource, { label: string; tip: string; icon:
   sqlite: { label: 'sqlite', tip: 'Transcript loaded from GET /conversations/{id}: the messages/blocks projection stored in SQLite on the persistent volume.', icon: Database },
   record: { label: 'record', tip: 'Loaded from GET /runs/{id} (the persisted run record).', icon: Database },
 }
+
+const REAL_CHIP = 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+const RESUMED_CHIP = 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300'
 
 function Stat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
@@ -52,6 +56,9 @@ export function RunStatusStrip({
   const okChecks = checks.filter((c) => c.ok).length
   const src = source ? SOURCE_LABEL[source] : null
   const SrcIcon = src?.icon ?? Radio
+  // Harness-level failure state, from structured events only (lib/interruptions.ts).
+  const worker = workerChip(state)
+  const loss = sandboxLoss(state)
 
   return (
     <div className="flex items-center gap-2.5">
@@ -63,6 +70,29 @@ export function RunStatusStrip({
       >
         {state.status}
       </Badge>
+      {worker ? (
+        <Badge
+          variant="outline"
+          className={`font-mono ${worker.tone === 'resumed' ? RESUMED_CHIP : REAL_CHIP}`}
+          title={worker.title}
+          data-slot="worker-chip"
+          data-tone={worker.tone}
+          data-worker-generation={state.workerGeneration}
+        >
+          {worker.tone === 'resumed' ? <RefreshCw aria-hidden /> : <Zap aria-hidden />} {worker.text}
+        </Badge>
+      ) : null}
+      {loss ? (
+        <Badge
+          variant="outline"
+          className={`font-mono ${REAL_CHIP}`}
+          title={sandboxChipTitle(loss)}
+          data-slot="sandbox-chip"
+          data-sandbox-status={loss.status}
+        >
+          <ServerOff aria-hidden /> {sandboxChipText(loss)}
+        </Badge>
+      ) : null}
       {src ? (
         <Tooltip>
           <TooltipTrigger

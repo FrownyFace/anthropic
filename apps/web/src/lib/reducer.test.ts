@@ -499,20 +499,20 @@ describe('fromRunRecord', () => {
       run_id: 'r_1',
       status: 'truncated',
       scenario_id: 'locked-file',
-      model: 'claude-sonnet-5',
+      model: 'claude-haiku-4-5',
       seed: 3,
       max_steps: 5,
       episode_id: 'ep_9',
       created_at: '2026-09-12T17:00:00.000Z',
       finished_at: '2026-09-12T17:00:30.000Z',
-      events: [ev('run.started', { scenario_id: 'locked-file', model: 'claude-haiku-4-5' })],
+      events: [ev('run.started', { scenario_id: 'locked-file', model: 'model-named-by-the-events' })],
       evaluation: null,
       usage: { input_tokens: 5, output_tokens: 1 },
       error: null,
     }
     const s = fromRunRecord(rec)
     expect(s.status).toBe('truncated')
-    expect(s.model).toBe('claude-sonnet-5')
+    expect(s.model).toBe('claude-haiku-4-5')
     expect(s.maxSteps).toBe(5)
     expect(elapsedMs(s)).toBe(30_000)
   })

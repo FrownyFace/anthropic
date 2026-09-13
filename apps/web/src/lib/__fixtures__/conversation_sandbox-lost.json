@@ -1,0 +1,185 @@
+{
+  "conversation": {
+    "id": "c_1a0982c9806c48810779d36",
+    "user_id": "u_00000000-0000-4000-8000-000000000000",
+    "scenario_id": "lost-ack",
+    "title": "Release 0.2.0 when the write ack is lost",
+    "created_at": "2026-09-13T00:30:54.470Z",
+    "updated_at": "2026-09-13T00:31:05.645Z",
+    "archived_at": null
+  },
+  "runs": [
+    {
+      "id": "r_77368c6c998d",
+      "run_id": "r_77368c6c998d",
+      "status": "interrupted",
+      "scenario_id": "lost-ack",
+      "model": "claude-haiku-4-5",
+      "score": null,
+      "created_at": "2026-09-13T00:30:54.786Z",
+      "finished_at": "2026-09-13T00:31:03.624Z",
+      "events": 19
+    }
+  ],
+  "messages": [
+    {
+      "id": "m_1a0982ca6142d18d49da27d",
+      "conversation_id": "c_1a0982c9806c48810779d36",
+      "run_id": "r_77368c6c998d",
+      "seq": 0,
+      "role": "user",
+      "step": null,
+      "created_at": "2026-09-13T00:30:58.004Z",
+      "blocks": [
+        {
+          "id": "b_1a0982ca61446efaae46782",
+          "message_id": "m_1a0982ca6142d18d49da27d",
+          "seq": 0,
+          "type": "text",
+          "text": "Prepare release 0.2.0 of this package following the Releasing section in README.md: bump `__version__` in src/ratelimiter/version.py to 0.2.0 and add a `## [0.2.0] - 2026-09-12` section at the top of CHANGELOG.md (directly below the header, above 0.1.0) with one bullet: `- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).` Tool calls can fail or time out; a timed-out write may or may not have been applied, so verify the file's current contents before writing again. Run `python -m pytest -q` before you finish, then call submit with a one-paragraph summary.",
+          "tool_name": null,
+          "tool_use_id": null,
+          "input": null,
+          "is_error": null,
+          "exit_code": null,
+          "duration_ms": null,
+          "fault": null,
+          "truncated": false
+        }
+      ]
+    },
+    {
+      "id": "m_1a0982cb07e3dff99c7c603",
+      "conversation_id": "c_1a0982c9806c48810779d36",
+      "run_id": "r_77368c6c998d",
+      "seq": 1,
+      "role": "assistant",
+      "step": 1,
+      "created_at": "2026-09-13T00:31:00.073Z",
+      "blocks": [
+        {
+          "id": "b_1a0982cb07e6490f34a68b8",
+          "message_id": "m_1a0982cb07e3dff99c7c603",
+          "seq": 0,
+          "type": "text",
+          "text": "I'll help you prepare release 0.2.0 by following the steps outlined in the README.md. Let me start by examining the relevant files.",
+          "tool_name": null,
+          "tool_use_id": null,
+          "input": null,
+          "is_error": null,
+          "exit_code": null,
+          "duration_ms": null,
+          "fault": null,
+          "truncated": false
+        },
+        {
+          "id": "b_1a0982cb07ee1a9ec4f1e85",
+          "message_id": "m_1a0982cb07e3dff99c7c603",
+          "seq": 1,
+          "type": "tool_use",
+          "text": null,
+          "tool_name": "read_file",
+          "tool_use_id": "toolu_01FqViEgtFGsnrepJpbYs28C",
+          "input": {
+            "path": "README.md"
+          },
+          "is_error": null,
+          "exit_code": null,
+          "duration_ms": null,
+          "fault": null,
+          "truncated": false
+        },
+        {
+          "id": "b_1a0982cb39faf6284385792",
+          "message_id": "m_1a0982cb07e3dff99c7c603",
+          "seq": 2,
+          "type": "tool_use",
+          "text": null,
+          "tool_name": "read_file",
+          "tool_use_id": "toolu_01YVDSNX1jWbsNUnZr648yUC",
+          "input": {
+            "path": "src/ratelimiter/version.py"
+          },
+          "is_error": null,
+          "exit_code": null,
+          "duration_ms": null,
+          "fault": null,
+          "truncated": false
+        },
+        {
+          "id": "b_1a0982cb7c62d4efc2e7706",
+          "message_id": "m_1a0982cb07e3dff99c7c603",
+          "seq": 3,
+          "type": "tool_use",
+          "text": null,
+          "tool_name": "read_file",
+          "tool_use_id": "toolu_01EirjnTpjpzjtVTLsGudMiE",
+          "input": {
+            "path": "CHANGELOG.md"
+          },
+          "is_error": null,
+          "exit_code": null,
+          "duration_ms": null,
+          "fault": null,
+          "truncated": false
+        }
+      ]
+    },
+    {
+      "id": "m_1a0982cb07e13cf3fa364c1",
+      "conversation_id": "c_1a0982c9806c48810779d36",
+      "run_id": "r_77368c6c998d",
+      "seq": 2,
+      "role": "user",
+      "step": 1,
+      "created_at": "2026-09-13T00:31:00.667Z",
+      "blocks": [
+        {
+          "id": "b_1a0982cb08095b8f0abb91f",
+          "message_id": "m_1a0982cb07e13cf3fa364c1",
+          "seq": 0,
+          "type": "tool_result",
+          "text": "{\"path\":\"README.md\",\"content\":\"# ratelimiter\\n\\nA tiny token-bucket rate limiter used by the Faultline demo. Pure Python, no dependencies.\\n\\n## Layout\\n\\n```\\nconfig/settings.json      runtime settings (see schema below)\\nsrc/ratelimiter/bucket.py TokenBucket: try_acquire(n) / tokens\\nsrc/ratelimiter/limits.py load_settings(path) -> Settings; allowed_burst(settings) -> int\\nsrc/ratelimiter/version.py __version__\\ntests/                    pytest suite (run: `python -m pytest -q`)\\nCHANGELOG.md              Keep-a-Changelog format, newest release first\\n```\\n\\n## Settings schema (`config/settings.json`)\\n\\n| key | type | default | meaning |\\n|---|---|---|---|\\n| `capacity` | int | `10` | bucket size in tokens |\\n| `refill_per_sec` | float | `2.0` | tokens added per second |\\n| `burst_multiplier` | float | `1.5` | allowed burst = floor(capacity × burst_multiplier) |\\n\\nAll three keys are required. Example:\\n\\n```json\\n{\\\"capacity\\\": 10, \\\"refill_per_sec\\\": 2.0, \\\"burst_multiplier\\\": 1.5}\\n```\\n\\n## Releasing\\n\\n1. Bump `__version__` in `src/ratelimiter/version.py`.\\n2. Add a `## [x.y.z] - YYYY-MM-DD` section at the **top** of `CHANGELOG.md` (below the header), one bullet per change.\\n3. Run `python -m pytest -q` — it must pass.\\n\",\"size\":1180,\"sha256\":\"efde28cb741df4c440e9fd5f88cbc326367168b404fa89b6a1cdd8de0aa7f411\",\"truncated\":false}",
+          "tool_name": "read_file",
+          "tool_use_id": "toolu_01FqViEgtFGsnrepJpbYs28C",
+          "input": null,
+          "is_error": false,
+          "exit_code": null,
+          "duration_ms": 593,
+          "fault": null,
+          "truncated": false
+        },
+        {
+          "id": "b_1a0982cb39f435fe77e71ad",
+          "message_id": "m_1a0982cb07e13cf3fa364c1",
+          "seq": 1,
+          "type": "tool_result",
+          "text": "{\"path\":\"src/ratelimiter/version.py\",\"content\":\"__version__ = \\\"0.1.0\\\"\\n\",\"size\":22,\"sha256\":\"91447944015cec709e8aa7655f7e9d64e1e4508e7023a57fe3746911c0fc6fed\",\"truncated\":false}",
+          "tool_name": "read_file",
+          "tool_use_id": "toolu_01YVDSNX1jWbsNUnZr648yUC",
+          "input": null,
+          "is_error": false,
+          "exit_code": null,
+          "duration_ms": 667,
+          "fault": null,
+          "truncated": false
+        },
+        {
+          "id": "b_1a0982cb84486c45d7da3fb",
+          "message_id": "m_1a0982cb07e13cf3fa364c1",
+          "seq": 2,
+          "type": "tool_result",
+          "text": "{\"error\":\"read_file: sandbox unavailable\",\"code\":\"ESANDBOX\",\"path\":null,\"detail\":\"ConflictError: Modal Sandbox is shutting down.\"}",
+          "tool_name": "read_file",
+          "tool_use_id": "toolu_01EirjnTpjpzjtVTLsGudMiE",
+          "input": null,
+          "is_error": true,
+          "exit_code": null,
+          "duration_ms": 665,
+          "fault": null,
+          "truncated": false
+        }
+      ]
+    }
+  ]
+}

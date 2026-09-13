@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react'
-import { AlertTriangle, CircleDashed, CornerDownRight, OctagonAlert } from 'lucide-react'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { AlertTriangle, CircleDashed, CornerDownRight, OctagonAlert, Zap } from 'lucide-react'
 
-import { AssistantText, LoadingState, ScoreRows, ThinkingTrace, ToolCallChips } from '@/components/bui'
+import { AssistantText, LoadingState, ScoreRows, ThinkingTrace, ToolCallChips, toolCallDomId } from '@/components/bui'
 import type { TransportState } from '@/lib/api'
-import { isTerminal } from '@/lib/reducer'
+import { interruptionNote } from '@/lib/interruptions'
+import { ungradedNote } from '@/lib/runStatus'
 import type { Transcript, Turn } from '@/lib/transcript'
-import type { FileDiff } from '@/lib/types'
+import type { FileDiff, Interruption, RunResumedData } from '@/lib/types'
 
 function UserBubble({ text }: { text: string }) {
   return (
@@ -20,32 +21,93 @@ function UserBubble({ text }: { text: string }) {
   )
 }
 
+const CALLOUT_TONE = {
+  error: 'border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-200',
+  warn: 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200',
+  neutral: 'border-line bg-muted/40 text-ink-2',
+} as const
+
 function Callout({
   tone,
   title,
   body,
   slot,
+  icon,
+  children,
+  attrs,
 }: {
   tone: 'error' | 'warn' | 'neutral'
   title: string
   body?: string | null
   slot?: string
+  icon?: typeof OctagonAlert
+  children?: ReactNode
+  attrs?: Record<string, string | number | boolean | undefined>
 }) {
-  const cls =
-    tone === 'error'
-      ? 'border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-200'
-      : tone === 'warn'
-        ? 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
-        : 'border-line bg-muted/40 text-ink-2'
-  const Icon = tone === 'error' ? OctagonAlert : tone === 'warn' ? AlertTriangle : CircleDashed
+  const Icon = icon ?? (tone === 'error' ? OctagonAlert : tone === 'warn' ? AlertTriangle : CircleDashed)
   return (
-    <div role="status" data-slot={slot} className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] ${cls}`}>
+    <div
+      role="status"
+      data-slot={slot}
+      {...attrs}
+      className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] ${CALLOUT_TONE[tone]}`}
+    >
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="min-w-0">
         <div className="font-medium">{title}</div>
         {body ? <div className="mt-0.5 font-mono text-[11.5px] break-words opacity-80">{body}</div> : null}
+        {children}
       </div>
     </div>
+  )
+}
+
+/** Scroll the dangling call's chip into view (or its step, if the chips are collapsed). */
+function revealCall(toolUseId: string, step: number | null | undefined) {
+  const chip = document.getElementById(toolCallDomId(toolUseId))
+  const visible = chip && chip.getClientRects().length > 0
+  const target =
+    (visible ? chip : null) ??
+    (typeof step === 'number' ? document.querySelector<HTMLElement>(`section[aria-label="Step ${step}"]`) : null)
+  if (target && typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  if (visible) chip.querySelector<HTMLElement>('button')?.focus()
+}
+
+/**
+ * A real interruption at this step (docs/error-taxonomy.md): who failed, whether it was planned
+ * chaos, which worker resumed and from where, and that the in-flight call's outcome is unknown
+ * until the ledger says otherwise. Everything comes from the `interruption` / `run.resumed`
+ * events (lib/interruptions.ts).
+ */
+function InterruptionCallout({ it, resumes }: { it: Interruption; resumes: RunResumedData[] }) {
+  const note = interruptionNote(it, resumes)
+  return (
+    <Callout
+      tone="error"
+      slot="interruption"
+      icon={Zap}
+      title={note.title}
+      body={note.body}
+      attrs={{
+        'data-layer': it.layer,
+        'data-code': it.code,
+        'data-planned': it.planned,
+        'data-resumed': note.resumed,
+        'data-worker-generation': note.workerGeneration ?? undefined,
+        'data-tool-use-id': note.toolUseId ?? undefined,
+      }}
+    >
+      {note.toolUseId && note.callLabel ? (
+        <button
+          type="button"
+          onClick={() => revealCall(note.toolUseId!, it.step)}
+          className="mt-1 font-mono text-[11.5px] underline decoration-dotted underline-offset-2 hover:decoration-solid"
+          title={note.toolUseId}
+        >
+          in-flight call: {note.callLabel}
+        </button>
+      ) : null}
+    </Callout>
   )
 }
 
@@ -55,12 +117,16 @@ function TurnBlock({
   live,
   maxSteps,
   diffs,
+  interruptions,
+  resumes,
 }: {
   turn: Turn
   isLast: boolean
   live: boolean
   maxSteps: number
   diffs: FileDiff[]
+  interruptions: Interruption[]
+  resumes: RunResumedData[]
 }) {
   const pending = turn.calls.some((c) => c.result === null)
   const active = live && isLast && pending
@@ -87,6 +153,9 @@ function TurnBlock({
           <ToolCallChips calls={turn.calls} diffs={diffs} live={live && isLast} />
         </ThinkingTrace>
       ) : null}
+      {interruptions.map((it, i) => (
+        <InterruptionCallout key={it.tool_use_id ?? `${it.at}-${i}`} it={it} resumes={resumes} />
+      ))}
     </section>
   )
 }
@@ -161,6 +230,13 @@ export function TranscriptView({
   const waitingOnModel =
     live && (!last || (last.calls.length > 0 && last.calls.every((c) => c.result !== null)))
 
+  // Interruptions render inline at their step; any without a matching turn (no step, or a step
+  // that produced no turn) are listed after the transcript so none is silently dropped.
+  const hasTurn = (step: number | null | undefined) => typeof step === 'number' && transcript.turns.some((t) => t.step === step)
+  const orphanInterruptions = transcript.interruptions.filter((it) => !hasTurn(it.step))
+
+  const ungraded = notFound || live ? null : ungradedNote(transcript)
+
   return (
     <div ref={ref} className="min-h-0 flex-1 overflow-y-auto" tabIndex={0} aria-label="Transcript">
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 md:px-6">
@@ -189,7 +265,12 @@ export function TranscriptView({
             live={live}
             maxSteps={maxSteps}
             diffs={diffs}
+            interruptions={transcript.interruptions.filter((it) => it.step === t.step)}
+            resumes={transcript.resumes}
           />
+        ))}
+        {orphanInterruptions.map((it, i) => (
+          <InterruptionCallout key={it.tool_use_id ?? `${it.at}-${i}`} it={it} resumes={transcript.resumes} />
         ))}
 
         {live && turnCount === 0 && !loading && !error && !notFound ? (
@@ -204,30 +285,31 @@ export function TranscriptView({
 
         {transcript.evaluation ? <ScoreRows evaluation={transcript.evaluation} /> : null}
 
-        {/* Pending or unavailable grading is never a pass: say so when a finished run has no evaluation. */}
-        {!transcript.evaluation && !live && isTerminal(transcript.status) && !notFound ? (
+        {/* Pending or unavailable grading is never a pass: say why a finished run has no evaluation,
+            from status / evaluation_status / error_class — never from the presence of error text. */}
+        {ungraded ? (
           <Callout
-            tone={transcript.status === 'ok' || transcript.status === 'truncated' ? 'warn' : 'neutral'}
+            tone={ungraded.tone}
             slot="not-graded"
-            title="Not graded"
-            body={
-              transcript.status === 'ok' || transcript.status === 'truncated'
-                ? transcript.score !== null
-                  ? `The record carries a score of ${Math.round(transcript.score)} but no evaluation detail; the grader's checks are not available for this run.`
-                  : 'The run finished but no evaluation was recorded — grading is pending or unavailable, not a pass.'
-                : 'No evaluation exists for this run.'
-            }
+            title={ungraded.title}
+            body={ungraded.body}
+            attrs={{
+              'data-status': transcript.status,
+              'data-evaluation-status': transcript.evaluationStatus ?? undefined,
+              'data-error-code': transcript.errorClass?.code ?? undefined,
+            }}
           />
         ) : null}
 
         {transcript.status === 'error' ? (
-          <Callout tone="error" title="The run ended with an error" body={transcript.error ?? null} />
-        ) : transcript.error && !transcript.live ? (
           <Callout
-            tone="warn"
-            title={transcript.evaluation ? 'The run reported an error' : 'The run finished but could not be graded'}
-            body={transcript.error}
+            tone="error"
+            slot="run-error"
+            title="The run ended with an error"
+            body={transcript.errorClass?.label ?? transcript.error ?? null}
           />
+        ) : transcript.evaluation && transcript.error && !transcript.live ? (
+          <Callout tone="warn" slot="run-error" title="The run reported an error" body={transcript.error} />
         ) : null}
         {transcript.status === 'truncated' ? (
           <Callout

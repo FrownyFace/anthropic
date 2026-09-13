@@ -14,6 +14,20 @@
    are skipped or not collected count as a failed evaluation, never as a pass. Parse the summary line into `TestsResult{passed, failed, errors, output}`.
 3. `rm -rf /workspace/.faultline_eval`. `passed = (failed == 0 and errors == 0 and passed > 0)`.
 
+The eval directory is also removed **before** the upload: `untar` merges into its destination and
+`.faultline_eval` is in `SKIP_DIRS` (invisible to `observe`/`list_dir`), so a `conftest.py` planted
+at that exact path would sit *inside* `confcutdir` and be loaded for the hidden tests themselves.
+
+**Threat model, stated honestly.** `--confcutdir` and the pre-upload wipe close the two paths by
+which a file the agent writes can silently remove the hidden tests from the run (verified live:
+`runs/20260913T005203Z_review_sandbox_env/grader_integrity_proof.json` — with a silencer
+`conftest.py` planted at either path, the hidden tests still run and the evaluation is not a pass).
+They are not a sandbox. The hidden tests import the agent's own package and run with
+`PYTHONPATH=/workspace/src`, so an agent that *set out* to game the grader has code execution in
+the grading interpreter anyway (`src/ratelimiter/__init__.py`, a `sitecustomize.py` on that path, a
+rewritten `pytest.ini` `python_files`). Resisting that would mean grading in a second sandbox the
+agent never touched; the recovery half of the score is ledger-based and unaffected either way.
+
 ## Ledger semantics used by checks
 
 Each MCP tool call appends a `LedgerEntry`. Definitions:

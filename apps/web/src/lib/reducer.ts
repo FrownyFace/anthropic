@@ -9,10 +9,12 @@
  *   - `mutating` / `read` classification and argv-token path matching approximate
  *     services/sandbox-env/GRADING.md so the badges in the UI line up with what the grader looks
  *     at. They are a live hint: the grader's checks (`episode.evaluated`) are authoritative.
- *   - `recovered`: a faulted call is marked recovered when a later call on the same path succeeds
- *     AND a successful *read* of that path happened at or before that success. Retrying blind does
- *     not count — that is the behaviour the `lost-ack` scenario grades. The UI labels this
- *     "read-back seen" and defers to the grader's checks once the evaluation exists.
+ *   - `recovered`: a faulted call — or any call whose outcome is unknown (ack lost, transport
+ *     failure, a worker interrupted mid-call) — is marked recovered when a later call on the same
+ *     path succeeds AND a successful *read* of that path happened at or before that success.
+ *     Retrying blind does not count — that is the behaviour the `lost-ack` and `worker-crash`
+ *     scenarios grade (`verified_before_rewrite` treats ack-lost and interrupted rows alike). The UI
+ *     labels this "read-back seen" and defers to the grader's checks once the evaluation exists.
  */
 
 import type {
@@ -38,6 +40,7 @@ import type {
   Usage,
 } from './types'
 import { ERROR_CODES, ERROR_LAYERS, ERROR_ORIGINS } from './types'
+import { taxonomyLabel } from './codes'
 
 export const LOG_BUFFER_LIMIT = 1000
 
@@ -380,17 +383,24 @@ function flatten(steps: StepView[]): ToolCallView[] {
   return all
 }
 
+/** A call the agent could not know the outcome of: a fault hit it, or the outcome is unknown. */
+function inDoubt(c: ToolCallView): boolean {
+  if (c.fault) return true
+  const r = c.result
+  return !!r && (r.outcome === 'unknown' || r.errorClass?.outcome_known === false)
+}
+
 /**
- * Recompute `recovered` for every faulted call. Cheap (a run is tens of calls) and keeps the flag
- * correct as later events arrive.
+ * Recompute `recovered` for every faulted or outcome-unknown call. Cheap (a run is tens of calls)
+ * and keeps the flag correct as later events arrive.
  */
 export function applyRecovery(steps: StepView[]): StepView[] {
   const all = flatten(steps)
   const recoveredIds = new Set<string>()
 
   for (const c of all) {
-    if (!c.fault) continue
-    const path = normalisePath(c.fault.path || c.path || '')
+    if (!inDoubt(c)) continue
+    const path = normalisePath(c.fault?.path || c.path || '')
     if (!path) continue
     const later = all.filter((x) => x.seq > c.seq)
     const successes = later.filter((x) => x.result && !x.result.isError && callTouches(x, path))
@@ -541,7 +551,8 @@ export function asErrorClass(v: unknown): ErrorClass | null {
   }
 }
 
-function asInterruption(v: unknown, fallbackStep: number | null): Interruption | null {
+/** Structural check for an Interruption payload (layer + code required); the event's step is the fallback. */
+export function asInterruption(v: unknown, fallbackStep: number | null): Interruption | null {
   const o = asRecord(v)
   const layer = asLayer(o.layer)
   const code = asCode(o.code)
@@ -563,7 +574,7 @@ function asInterruption(v: unknown, fallbackStep: number | null): Interruption |
   }
 }
 
-function asToolOutcome(v: unknown): ToolOutcome | null {
+export function asToolOutcome(v: unknown): ToolOutcome | null {
   return v === 'executed' || v === 'failed' || v === 'not_executed' || v === 'unknown' ? v : null
 }
 
@@ -588,6 +599,55 @@ function nextSeq(steps: StepView[]): number {
   let max = -1
   for (const s of steps) for (const c of s.calls) if (c.seq > max) max = c.seq
   return max + 1
+}
+
+/**
+ * `log` event `ev: "ledger.resolution"` (emitted once, after grading): the ledger's ground truth
+ * for calls whose outcome the agent never learned — an ack-lost write, or a call a dead worker
+ * left in flight. Folds `side_effect_applied` onto the matching call's error class (creating a
+ * minimal one when the record carries none) so an "unknown" status can add "the ledger later
+ * confirmed it had landed". The call's outcome stays what the agent saw: a later event is
+ * folded, an earlier one is never rewritten, and the stream stays append-only.
+ *
+ *   resolutions[]: {tool_use_id, step, ledger_step, tool, path, outcome, origin?, error_code?,
+ *                   interrupted, side_effect_applied}
+ */
+export function applyLedgerResolution(steps: StepView[], raw: unknown): StepView[] {
+  if (!Array.isArray(raw)) return steps
+  const byCall = new Map<string, { applied: boolean; interrupted: boolean; code: ErrorCode | null }>()
+  for (const r of raw) {
+    const o = asRecord(r)
+    if (typeof o.tool_use_id !== 'string' || typeof o.side_effect_applied !== 'boolean') continue
+    byCall.set(o.tool_use_id, { applied: o.side_effect_applied, interrupted: o.interrupted === true, code: asCode(o.error_code) })
+  }
+  if (byCall.size === 0) return steps
+  return steps.map((s) => {
+    if (!s.calls.some((c) => c.result !== null && byCall.has(c.toolUseId))) return s
+    return {
+      ...s,
+      calls: s.calls.map((c) => {
+        const res = byCall.get(c.toolUseId)
+        if (!res || !c.result) return c
+        const existing = c.result.errorClass
+        const origin: ErrorOrigin = existing?.origin ?? (res.interrupted ? 'real' : (c.fault?.origin ?? 'injected'))
+        const layer: ErrorLayer = existing?.layer ?? (res.interrupted ? 'harness' : (c.fault?.layer ?? 'boundary'))
+        const code: ErrorCode = existing?.code ?? (res.interrupted ? 'EHARNESS' : (c.result.errorCode ?? res.code ?? 'ETIMEDOUT'))
+        const errorClass: ErrorClass = existing
+          ? { ...existing, side_effect_applied: res.applied }
+          : {
+              origin,
+              layer,
+              code,
+              kind: c.fault?.kind ?? null,
+              label: taxonomyLabel(origin, c.fault?.kind ?? null, layer) ?? `${origin}: ${code}`,
+              outcome_known: false,
+              side_effect_applied: res.applied,
+              detail: null,
+            }
+        return { ...c, result: { ...c.result, errorClass } }
+      }),
+    }
+  })
 }
 
 /** Fold one event into the view state. Pure: never mutates `state`. */
@@ -723,6 +783,11 @@ export function reduce(state: ViewState, ev: Event): ViewState {
         next.sandboxAlive = result.sandbox.alive
       }
       const fault = asFault(data.fault)
+      // Count the fault whether or not its call is known (a synthesised call after an SSE gap
+      // must not undercount the header's faults stat).
+      if (fault && !state.faults.some((f) => f.step === fault.step && f.path === fault.path && f.kind === fault.kind)) {
+        next.faults = [...state.faults, fault]
+      }
       let found = false
       const updated = state.steps.map((s) => {
         if (!s.calls.some((c) => c.toolUseId === toolUseId)) return s
@@ -736,7 +801,7 @@ export function reduce(state: ViewState, ev: Event): ViewState {
       })
       if (!found) {
         // A result without its call (resumed mid-run, or events dropped): synthesise the call so
-        // the timeline still shows the output rather than silently losing it.
+        // the transcript still shows the output rather than silently losing it.
         const tool = str(data.tool) ?? 'unknown'
         const { steps, idx } = upsertStep(state.steps, step)
         const target = steps[idx]!
@@ -760,9 +825,6 @@ export function reduce(state: ViewState, ev: Event): ViewState {
         next.steps = applyRecovery(s2)
         return next
       }
-      if (fault && !state.faults.some((f) => f.step === fault.step && f.path === fault.path && f.kind === fault.kind)) {
-        next.faults = [...state.faults, fault]
-      }
       next.steps = applyRecovery(updated)
       return next
     }
@@ -774,13 +836,22 @@ export function reduce(state: ViewState, ev: Event): ViewState {
         (f) => f.step === fault.step && f.path === fault.path && f.kind === fault.kind,
       )
       next.faults = known ? state.faults : [...state.faults, fault]
-      // Attach to the call at that step that touched the path and has no fault yet.
+      // `fault.step` is sandbox-env's LEDGER index (it counts MCP calls; the grader scores against
+      // it) and is the dedupe key above. The harness turn the fault belongs to is the event's own
+      // `step`, so attach by that — and by `tool_use_id` when the payload names one — never by
+      // the ledger index, which routinely names a later or non-existent turn.
+      const atStep = typeof ev.step === 'number' ? ev.step : fault.step
+      const targetCall = str(data.tool_use_id)
       const updated = state.steps.map((s) => {
-        if (s.step !== fault.step) return s
+        if (s.step !== atStep) return s
         let attached = false
         const calls = s.calls.map((c) => {
           if (attached || c.fault) return c
-          if (!callTouches(c, fault.path) && c.path !== normalisePath(fault.path)) return c
+          if (targetCall) {
+            if (c.toolUseId !== targetCall) return c
+          } else if (!callTouches(c, fault.path) && c.path !== normalisePath(fault.path)) {
+            return c
+          }
           attached = true
           return { ...c, fault }
         })
@@ -874,6 +945,7 @@ export function reduce(state: ViewState, ev: Event): ViewState {
       const line = data as unknown as LogLine
       if (typeof line?.ev !== 'string') return next
       next.logs = [...state.logs, line].slice(-LOG_BUFFER_LIMIT)
+      if (line.ev === 'ledger.resolution') next.steps = applyLedgerResolution(state.steps, data.resolutions)
       return next
     }
 
@@ -887,22 +959,27 @@ export function reduceAll(events: Event[], from: ViewState = initialState()): Vi
 }
 
 /**
- * Seed the view from a whole RunRecord (page refresh mid-run, or a bundled demo). Record-level
- * fields win over anything the events implied, because the record is the harness's own summary.
+ * Overlay a RunRecord's summary fields on a folded view. Record-level fields win over anything
+ * the events implied, because the record is the harness's own summary. Used both to seed a view
+ * from GET /runs/{id} (`fromRunRecord`) and by the polling fallback, which receives the whole
+ * record on every tick — so a missed `run.finished` can never leave the header stale.
  */
-export function fromRunRecord(rec: RunRecord): ViewState {
-  const folded = reduceAll(rec.events ?? [])
+export function overlayRecord(folded: ViewState, rec: RunRecord): ViewState {
+  const status = asRunStatus(rec.status) ?? folded.status
   // The record's usage is the harness's own running total and wins whenever it says anything.
   // The one exception is an in-flight record whose usage is still the {0,0} default while its
   // events already carry `llm.call` sums — showing zeros there would be a regression.
   const usage =
-    rec.usage && (isTerminal(rec.status) || !usageIsEmpty(rec.usage) || usageIsEmpty(folded.usage))
+    rec.usage && (isTerminal(status) || !usageIsEmpty(rec.usage) || usageIsEmpty(folded.usage))
       ? rec.usage
       : folded.usage
+  const interruptions = Array.isArray(rec.interruptions)
+    ? rec.interruptions.map((it) => asInterruption(it, null)).filter((it): it is Interruption => it !== null)
+    : []
   return {
     ...folded,
     runId: rec.run_id ?? folded.runId,
-    status: asRunStatus(rec.status) ?? folded.status,
+    status,
     scenarioId: rec.scenario_id ?? folded.scenarioId,
     model: rec.model ?? folded.model,
     seed: rec.seed ?? folded.seed,
@@ -914,14 +991,18 @@ export function fromRunRecord(rec: RunRecord): ViewState {
     evaluation: rec.evaluation ?? folded.evaluation,
     usage,
     error: rec.error ?? folded.error,
-    errorClass: rec.error_class ?? folded.errorClass,
-    interruptions:
-      Array.isArray(rec.interruptions) && rec.interruptions.length > 0 ? rec.interruptions : folded.interruptions,
+    errorClass: asErrorClass(rec.error_class) ?? folded.errorClass,
+    interruptions: interruptions.length > 0 ? interruptions : folded.interruptions,
     workerGeneration: Math.max(
       folded.workerGeneration,
       typeof rec.worker_generation === 'number' ? rec.worker_generation : 1,
     ),
   }
+}
+
+/** Seed the view from a whole RunRecord (page refresh mid-run, or a bundled demo). */
+export function fromRunRecord(rec: RunRecord): ViewState {
+  return overlayRecord(reduceAll(rec.events ?? []), rec)
 }
 
 // --------------------------------------------------------------------------- selectors

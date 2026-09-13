@@ -40,11 +40,12 @@ export interface CheckSpec {
   weight: number
 }
 
-/** A fault class in play (kind, layer, origin, description) — never paths, hits or timing. */
+/** One fault class the catalogue publishes: what can fail and who causes it, never where or when. */
 export interface FaultPublic {
-  kind: FaultKind | HarnessFaultKind
+  kind: FaultKind | HarnessFaultKind | string
   origin: ErrorOrigin
   layer: ErrorLayer
+  /** One plain-language sentence for the UI. */
   description: string
 }
 
@@ -59,6 +60,7 @@ export interface Scenario {
   harness_faults?: HarnessFault[]
   /** What the grader will look for (public: id, description, weight). Older harness: absent. */
   checks?: CheckSpec[]
+  /** Every fault class in play with its origin (staged / injected / real). Older harness: absent. */
   faults_public?: FaultPublic[]
 }
 
@@ -189,15 +191,6 @@ export interface FileDiff {
   unified: string
 }
 
-export interface ObserveResponse {
-  episode_id: string
-  step: number
-  files: FileEntry[]
-  diffs: FileDiff[]
-  faults_fired: FaultFired[]
-  done: boolean
-}
-
 export interface Check {
   id: string
   ok: boolean
@@ -322,13 +315,6 @@ export interface RunRecord {
   worker_generation?: number
 }
 
-export interface RunRequest {
-  scenario_id: string
-  model?: string | null
-  seed?: number | null
-  max_steps?: number | null
-}
-
 export interface Health {
   svc: 'harness' | 'sandbox-env' | 'web'
   ok: boolean
@@ -339,12 +325,14 @@ export interface Health {
   detail: Record<string, unknown>
 }
 
-export const MODEL_ALLOWLIST = [
-  'claude-haiku-4-5',
-  'claude-sonnet-5',
-  'claude-opus-5',
-] as const
+/** The only model this demo runs. The harness rejects anything else server-side (400). */
+export const MODEL_ALLOWLIST = ['claude-haiku-4-5'] as const
 export const DEFAULT_MODEL = 'claude-haiku-4-5'
+
+/** `m` when it is on the allowlist, else null — so a harness `model_default` can never widen the choice. */
+export function allowedModel(m: string | null | undefined): string | null {
+  return typeof m === 'string' && (MODEL_ALLOWLIST as readonly string[]).includes(m) ? m : null
+}
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
@@ -362,30 +350,6 @@ export interface LogLine {
 }
 
 // ---------------------------------------------------------------- typed event payloads
-
-export interface RunStartedData {
-  scenario_id: string
-  model: string
-  seed?: number | null
-  max_steps?: number
-  anthropic_workspace?: string
-}
-
-export interface EpisodeResetData {
-  episode_id: string
-  files?: FileEntry[]
-  task_prompt?: string
-  /** The public scenario, when the harness includes it. */
-  scenario?: Scenario
-  /** short sandbox id (ops/evidence only) */
-  sandbox_id?: string | null
-  /** 1 = first provisioning; >1 when the harness re-provisioned the workspace */
-  attempt?: number
-}
-
-export interface TurnTextData {
-  text: string
-}
 
 export interface ToolCallData {
   tool: ToolName | string
@@ -411,25 +375,8 @@ export interface ToolResultData {
   sandbox?: { id: string; alive: boolean } | null
 }
 
-export interface WorkspaceDiffData {
-  files: FileEntry[]
-  diffs: FileDiff[]
-}
-
+/** `run.finished.data.evaluation_status`: ok = graded, failed = evaluate() broke, skipped = never attempted. */
 export type EvaluationStatus = 'ok' | 'failed' | 'skipped'
-
-export interface RunFinishedData {
-  status: RunStatus
-  usage?: Usage
-  duration_ms?: number
-  error?: string
-  evaluation_status?: EvaluationStatus
-  evaluation_error?: string | null
-  steps?: number
-  score?: number | null
-  /** why status is error/unevaluated/interrupted */
-  error_class?: ErrorClass | null
-}
 
 /** `run.resumed` — emitted by the worker that picked the run up after an interruption. */
 export interface RunResumedData {
@@ -447,22 +394,6 @@ export interface EpisodeSandboxData {
   status: SandboxStatus
   reason?: string | null
   step?: number | null
-}
-
-/** One `messages.create` round trip. Retries on 429/5xx arrive with `attempt > 1` for the same step. */
-export interface LlmCallData {
-  attempt: number
-  model: string
-  stop_reason?: string | null
-  request_id?: string | null
-  usage: Usage
-  duration_ms: number
-  error?: string | null
-}
-
-/** Summarised thinking, for models that expose it. */
-export interface TurnThinkingData {
-  text: string
 }
 
 // ---------------------------------------------------------------- persistence (harness Store; ARCHITECTURE.md §4)
@@ -528,6 +459,12 @@ export interface Block {
   duration_ms?: number | null
   fault?: FaultFired | null
   truncated: boolean
+  // Provenance a newer Store may project onto tool_result blocks (the schema's Block has none
+  // today); read when present, never required.
+  outcome?: ToolOutcome | null
+  error_class?: ErrorClass | null
+  attempts?: number | null
+  sandbox?: { id: string; alive: boolean } | null
 }
 
 export type MessageRole = 'user' | 'assistant'
@@ -543,23 +480,6 @@ export interface Message {
   step?: number | null
   created_at: string
   blocks: Block[]
-}
-
-export interface LlmCall {
-  id: string
-  run_id: string
-  step: number
-  attempt: number
-  model: string
-  request_id?: string | null
-  stop_reason?: string | null
-  input_tokens?: number | null
-  output_tokens?: number | null
-  cache_read_tokens?: number | null
-  cache_write_tokens?: number | null
-  started_at: string
-  duration_ms?: number | null
-  error?: string | null
 }
 
 export interface ConversationDetail {
@@ -588,12 +508,6 @@ export interface MeResponse {
   conversations: number
 }
 
-export interface CreateRunResponse {
-  run_id: string
-  /** Present once the Store has landed on the harness. */
-  conversation_id?: string
-}
-
 export interface ConversationRunResponse {
   run_id: string
   conversation_id: string
@@ -606,45 +520,4 @@ export interface UpdateConversationRequest {
 
 export interface ArchiveResponse {
   archived: true
-}
-
-// ---------------------------------------------------------------- MCP tool payloads
-// Mirrors of the *Output models in schemas.py. Tool results arrive as a JSON string in
-// ToolResultData.output; these types describe what that string parses into on success.
-
-export interface RunCommandOutput {
-  stdout: string
-  stderr: string
-  exit_code: number
-  duration_ms: number
-  truncated?: boolean
-}
-
-export interface ReadFileOutput {
-  path: string
-  content: string
-  size: number
-  sha256: string
-  truncated?: boolean
-}
-
-export interface WriteFileOutput {
-  path: string
-  bytes_written: number
-  sha256: string
-}
-
-export interface DirEntry {
-  name: string
-  type: 'file' | 'dir' | 'other'
-  size?: number | null
-}
-
-export interface ListDirOutput {
-  path: string
-  entries: DirEntry[]
-}
-
-export interface FaultPlan {
-  faults: FaultSpec[]
 }

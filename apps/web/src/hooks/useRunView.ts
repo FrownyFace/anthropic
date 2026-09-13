@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { HarnessClient, isNotFound, subscribeRun, type Subscription, type TransportState } from '@/lib/api'
 import { getLogger } from '@/lib/log'
-import { fromRunRecord, initialState, reduce, type ViewState } from '@/lib/reducer'
+import { fromRunRecord, initialState, overlayRecord, reduce, type ViewState } from '@/lib/reducer'
 import type { Event, RunRecord } from '@/lib/types'
 
 const log = getLogger('web')
@@ -130,20 +130,11 @@ export function useRunView(client: HarnessClient | null, source: RunSource): Run
         },
         onRecord: (r) => {
           if (cancelled) return
-          // The polling fallback returns the whole record; take the summary fields from it so the
-          // header stays right even if a `run.finished` event was missed.
-          patch(key, (s) => ({
-            ...s,
-            record: r,
-            state: {
-              ...s.state,
-              status: r.status ?? s.state.status,
-              usage: r.usage ?? s.state.usage,
-              evaluation: r.evaluation ?? s.state.evaluation,
-              error: r.error ?? s.state.error,
-              finishedAt: r.finished_at ?? s.state.finishedAt,
-            },
-          }))
+          // The polling fallback returns the whole record; overlay its summary fields (status
+          // validated, error_class, interruptions, worker_generation, …) with the same mapping the
+          // seed uses, so the header stays right even if a `run.finished` event was missed. The
+          // events themselves arrive through onEvents, so the fold is never applied twice.
+          patch(key, (s) => ({ ...s, record: r, state: overlayRecord(s.state, r) }))
         },
         onTransport: (t) => {
           if (!cancelled) patch(key, (s) => ({ ...s, transport: t }))

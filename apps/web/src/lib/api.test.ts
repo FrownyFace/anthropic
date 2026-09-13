@@ -131,7 +131,7 @@ describe('HarnessClient', () => {
       return jsonResponse(record())
     }) as unknown as typeof fetch
 
-    const c = new HarnessClient(BASE, fetchImpl)
+    const c = new HarnessClient(BASE, { fetchImpl })
     expect((await c.health()).ok).toBe(true)
     expect((await c.scenarios())[0]!.id).toBe('lost-ack')
     expect((await c.getRun('r_1')).run_id).toBe('r_1')
@@ -143,20 +143,33 @@ describe('HarnessClient', () => {
     ])
   })
 
-  it('POSTs /runs with a JSON body', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ run_id: 'r_new' })) as unknown as typeof fetch
-    const c = new HarnessClient(BASE, fetchImpl)
-    const res = await c.createRun({ scenario_id: 'lost-ack', model: 'claude-sonnet-5' })
+  it('POSTs /conversations/{id}/runs with a JSON body', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ run_id: 'r_new', conversation_id: 'c_1' })) as unknown as typeof fetch
+    const c = new HarnessClient(BASE, { fetchImpl })
+    const res = await c.createConversationRun('c_1', { model: 'claude-haiku-4-5' })
     expect(res.run_id).toBe('r_new')
-    const init = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1] as RequestInit
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0]! as [string, RequestInit]
+    expect(url).toBe(`${BASE}/conversations/c_1/runs`)
     expect(init.method).toBe('POST')
-    expect(JSON.parse(String(init.body))).toEqual({ scenario_id: 'lost-ack', model: 'claude-sonnet-5' })
+    expect(JSON.parse(String(init.body))).toEqual({ model: 'claude-haiku-4-5' })
   })
 
   it('throws a HarnessError carrying the status on a non-2xx', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ detail: 'nope' }, false, 503)) as unknown as typeof fetch
-    const c = new HarnessClient(BASE, fetchImpl)
-    await expect(c.health()).rejects.toMatchObject({ name: 'HarnessError', status: 503 })
+    const c = new HarnessClient(BASE, { fetchImpl })
+    await expect(c.health()).rejects.toMatchObject({ name: 'HarnessError', status: 503, detail: 'nope' })
+  })
+
+  it("surfaces the harness's own error sentence unchanged (a 400 for a model it does not allow)", async () => {
+    const text = 'model "claude-other" is not allowed; this deployment runs claude-haiku-4-5 only'
+    const fetchImpl = vi.fn(async () => jsonResponse({ error: text }, false, 400)) as unknown as typeof fetch
+    const c = new HarnessClient(BASE, { fetchImpl })
+    const err = await c.createConversationRun('c_1', { model: 'claude-other' }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(HarnessError)
+    expect((err as HarnessError).status).toBe(400)
+    expect((err as HarnessError).detail).toBe(text)
+    expect((err as HarnessError).message.startsWith('400 ')).toBe(true)
+    expect((err as HarnessError).message.endsWith(`from ${BASE}/conversations/c_1/runs: ${text}`)).toBe(true)
   })
 })
 
@@ -194,7 +207,7 @@ describe('HarnessClient identity header', () => {
     await c.scenarios()
     await c.me()
     await c.listConversations()
-    await c.createRun({ scenario_id: 'lost-ack' })
+    await c.createConversationRun('c_1', {})
     await c.getRun('r_9')
 
     const all = calls(fetchImpl)
@@ -208,9 +221,9 @@ describe('HarnessClient identity header', () => {
     expect(headerOf(post[1], 'content-type')).toBe('application/json')
   })
 
-  it('sends no identity header when constructed without one (positional fetchImpl form)', async () => {
+  it('sends no identity header when constructed without a userId', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ ok: true })) as unknown as typeof fetch
-    const c = new HarnessClient(BASE, fetchImpl)
+    const c = new HarnessClient(BASE, { fetchImpl })
     expect(c.userId).toBeNull()
     await c.health()
     expect(headerOf(calls(fetchImpl)[0]![1], USER_HEADER)).toBeUndefined()
@@ -233,12 +246,6 @@ describe('HarnessClient scenarios()', () => {
 })
 
 describe('HarnessClient conversation routes', () => {
-  it('createRun surfaces conversation_id when the harness returns one', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ run_id: 'r_1', conversation_id: 'c_1' })) as unknown as typeof fetch
-    const res = await new HarnessClient(BASE, { fetchImpl }).createRun({ scenario_id: 'lost-ack' })
-    expect(res).toEqual({ run_id: 'r_1', conversation_id: 'c_1' })
-  })
-
   it('hits the documented paths with the documented methods and bodies', async () => {
     const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
       const u = String(url)
@@ -263,7 +270,7 @@ describe('HarnessClient conversation routes', () => {
     expect((await c.listConversations())[0]!.id).toBe('c_1')
     expect((await c.getConversation('c_1')).conversation.id).toBe('c_1')
     expect((await c.createConversation({ scenario_id: 'lost-ack', title: 't' })).id).toBe('c_new')
-    expect((await c.createConversationRun('c_1', { model: 'claude-sonnet-5', seed: 3 })).run_id).toBe('r_2')
+    expect((await c.createConversationRun('c_1', { model: 'claude-haiku-4-5', seed: 3 })).run_id).toBe('r_2')
     expect((await c.updateConversation('c_1', { title: 'renamed' })).title).toBe('renamed')
     expect((await c.archiveConversation('c_1')).archived).toBe(true)
 
@@ -278,7 +285,7 @@ describe('HarnessClient conversation routes', () => {
       'DELETE /conversations/c_1',
     ])
     expect(JSON.parse(String(all[3]![1].body))).toEqual({ scenario_id: 'lost-ack', title: 't' })
-    expect(JSON.parse(String(all[4]![1].body))).toEqual({ model: 'claude-sonnet-5', seed: 3 })
+    expect(JSON.parse(String(all[4]![1].body))).toEqual({ model: 'claude-haiku-4-5', seed: 3 })
     expect(JSON.parse(String(all[5]![1].body))).toEqual({ title: 'renamed' })
     expect(all[6]![1].body).toBeUndefined()
     for (const [, init] of all) expect(headerOf(init, USER_HEADER)).toBe(UID)

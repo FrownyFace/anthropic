@@ -11,15 +11,15 @@
  */
 
 import { useId, useState, type ReactNode } from 'react'
-import { Ban, Check, ChevronDown, CircleQuestionMark, Sparkles, Terminal, X } from 'lucide-react'
+import { ChevronDown, Sparkles, Terminal } from 'lucide-react'
 
-import { ErrorOriginBadge, FaultFiredBadge, RecoveredBadge } from '@/components/FaultBadge'
+import { CallBadges } from '@/components/FaultBadge'
 import { callStatus } from '@/lib/callStatus'
 import { oneLine } from '@/lib/format'
 import type { ToolCallView } from '@/lib/reducer'
 import { cn } from '@/lib/utils'
 
-import { summariseCall, TOOL_ICON, toolLabel } from './toolMeta'
+import { STATUS_GLYPH, summariseCall, TOOL_ICON, toolLabel } from './toolMeta'
 
 export interface ThinkingTraceProps {
   step: number
@@ -35,6 +35,11 @@ export interface ThinkingTraceProps {
   defaultOpen?: boolean
   /** Rendered inside the expanded body, under the rows. */
   children?: ReactNode
+  /**
+   * Show the fault / origin / read-back badges on the rail rows. Defaults to `!children`: when
+   * ToolCallChips are nested inside, they carry the badges, and the rail does not repeat them.
+   */
+  rowBadges?: boolean
 }
 
 function plural(n: number, word: string): string {
@@ -47,45 +52,27 @@ function statusText(active: boolean, done: boolean, n: number): string {
   return 'pending'
 }
 
-/** Rail glyph from structured status (`lib/callStatus.ts`); an unknown outcome is not a cross. */
+/** Rail glyph from structured status (`lib/callStatus.ts`, icons from `STATUS_GLYPH`); an unknown outcome is not a cross. */
 function Glyph({ call, active }: { call: ToolCallView; active: boolean }) {
   const st = callStatus(call, active)
-  switch (st.kind) {
-    case 'running':
-      return (
-        <span
-          className="bui-spin size-3 shrink-0 rounded-full border-[1.5px] border-line-strong border-t-ink-2"
-          aria-label="running"
-          role="img"
-        />
-      )
-    case 'pending':
-      return <span className="size-3 shrink-0 rounded-full border-[1.5px] border-line" aria-label="pending" role="img" />
-    case 'failed':
-      return (
-        <span role="img" aria-label="error" title={st.detail} className="flex shrink-0">
-          <X className="size-3.5 text-rose-700 dark:text-rose-300" strokeWidth={2.5} aria-hidden />
-        </span>
-      )
-    case 'unknown':
-      return (
-        <span role="img" aria-label="unknown" title={st.detail} className="flex shrink-0">
-          <CircleQuestionMark className="size-3.5 text-amber-700 dark:text-amber-300" strokeWidth={2.5} aria-hidden />
-        </span>
-      )
-    case 'not_executed':
-      return (
-        <span role="img" aria-label="not executed" title={st.detail} className="flex shrink-0">
-          <Ban className="size-3.5 text-amber-700 dark:text-amber-300" strokeWidth={2.5} aria-hidden />
-        </span>
-      )
-    default:
-      return (
-        <span role="img" aria-label="ok" title={st.detail} className="flex shrink-0">
-          <Check className="size-3.5 text-ink-3" strokeWidth={2.5} aria-hidden />
-        </span>
-      )
+  const g = STATUS_GLYPH[st.kind]
+  if (st.kind === 'running') {
+    return (
+      <span
+        className="bui-spin size-3 shrink-0 rounded-full border-[1.5px] border-line-strong border-t-ink-2"
+        aria-label={g.label}
+        role="img"
+      />
+    )
   }
+  if (!g.Icon) {
+    return <span className="size-3 shrink-0 rounded-full border-[1.5px] border-line" aria-label={g.label} role="img" />
+  }
+  return (
+    <span role="img" aria-label={g.label} title={st.detail} className="flex shrink-0">
+      <g.Icon className={cn('size-3.5', g.railClassName)} strokeWidth={2.5} aria-hidden />
+    </span>
+  )
 }
 
 export function ThinkingTrace({
@@ -97,10 +84,12 @@ export function ThinkingTrace({
   done,
   defaultOpen,
   children,
+  rowBadges,
 }: ThinkingTraceProps) {
   const [manual, setManual] = useState<boolean | null>(null)
   const expanded = manual ?? defaultOpen ?? active
   const panelId = useId()
+  const showRowBadges = rowBadges ?? (children === undefined || children === null)
 
   const n = calls.length
   const faults = calls.filter((c) => c.fault).length
@@ -187,6 +176,7 @@ export function ThinkingTrace({
                     className="bui-fade-up flex min-h-7 w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1.5 py-0.5"
                     style={{ animationDelay: `${active ? 0 : Math.min(i, 8) * 60}ms` }}
                     data-slot="trace-row"
+                    data-tool-use-id={call.toolUseId}
                   >
                     <Glyph call={call} active={active} />
                     <Icon className="size-3.5 shrink-0 text-ink-3" aria-hidden />
@@ -194,11 +184,7 @@ export function ThinkingTrace({
                     <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink-3">
                       {oneLine(summariseCall(call), 140)}
                     </span>
-                    {call.fault ? <FaultFiredBadge fault={call.fault} /> : null}
-                    {call.result?.errorClass && (call.result.errorClass.origin === 'real' || !call.fault) ? (
-                      <ErrorOriginBadge errorClass={call.result.errorClass} />
-                    ) : null}
-                    {call.recovered ? <RecoveredBadge /> : null}
+                    {showRowBadges ? <CallBadges call={call} /> : null}
                   </div>
                 )
               })}

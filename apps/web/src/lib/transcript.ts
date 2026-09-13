@@ -7,12 +7,16 @@
  * reducer's own classification, result parsing and recovery derivation, so a fault badge or a
  * "read-back seen" hint means the same thing on every path. That hint is a heuristic from call
  * order; the grader's checks (`evaluation`) are authoritative and the UI prefers them once they
- * exist. The messages projection carries no evaluation or run error of its own — the caller
- * overlays them from the run record (`transcriptFromMessages(messages, run, overlay)`).
+ * exist. The messages projection carries no evaluation, run error, error class, interruptions or
+ * resumes of its own — the caller overlays them from the run record
+ * (`transcriptFromMessages(messages, run, overlayFromViewState(state))`).
  */
 
+import { taxonomyLabel } from './codes'
 import {
   applyRecovery,
+  asErrorClass,
+  asToolOutcome,
   classifyCall,
   isTerminal,
   parseToolResult,
@@ -20,7 +24,19 @@ import {
   type ToolCallView,
   type ViewState,
 } from './reducer'
-import type { Block, EvaluateResponse, Message, RunStatus, RunSummary } from './types'
+import type {
+  Block,
+  ErrorClass,
+  ErrorCode,
+  ErrorLayer,
+  EvaluateResponse,
+  EvaluationStatus,
+  Interruption,
+  Message,
+  RunResumedData,
+  RunStatus,
+  RunSummary,
+} from './types'
 
 export interface Turn {
   step: number
@@ -40,6 +56,17 @@ export interface Transcript {
   score: number | null
   /** The run's error text (`run.finished.error` / `RunRecord.error`); RunSummary carries none. */
   error: string | null
+  /** Run-level classification: why status is error / unevaluated / interrupted. */
+  errorClass: ErrorClass | null
+  /** `run.finished.data.evaluation_status` / `evaluation_error`. */
+  evaluationStatus: EvaluationStatus | null
+  evaluationError: string | null
+  /** Every real interruption (`interruption` events / `RunRecord.interruptions`). */
+  interruptions: Interruption[]
+  /** Every `run.resumed` (a fresh worker continued the run), in order. */
+  resumes: RunResumedData[]
+  /** 1 + number of resumes. */
+  workerGeneration: number
   /** True while more turns may still arrive. */
   live: boolean
 }
@@ -49,6 +76,27 @@ export interface TranscriptOverlay {
   evaluation?: EvaluateResponse | null
   error?: string | null
   status?: RunStatus | null
+  errorClass?: ErrorClass | null
+  evaluationStatus?: EvaluationStatus | null
+  evaluationError?: string | null
+  interruptions?: Interruption[]
+  resumes?: RunResumedData[]
+  workerGeneration?: number
+}
+
+/** Everything the persisted-messages path must borrow from the run record's folded view. */
+export function overlayFromViewState(state: ViewState): TranscriptOverlay {
+  return {
+    evaluation: state.evaluation,
+    error: state.error,
+    status: state.status,
+    errorClass: state.errorClass,
+    evaluationStatus: state.evaluationStatus,
+    evaluationError: state.evaluationError,
+    interruptions: state.interruptions,
+    resumes: state.resumes,
+    workerGeneration: state.workerGeneration,
+  }
 }
 
 export function transcriptFromViewState(state: ViewState, live: boolean): Transcript {
@@ -62,6 +110,12 @@ export function transcriptFromViewState(state: ViewState, live: boolean): Transc
     evaluation: state.evaluation,
     score: state.evaluation?.score ?? null,
     error: state.error,
+    errorClass: state.errorClass,
+    evaluationStatus: state.evaluationStatus,
+    evaluationError: state.evaluationError,
+    interruptions: state.interruptions,
+    resumes: state.resumes,
+    workerGeneration: state.workerGeneration,
     live,
   }
 }
@@ -115,6 +169,22 @@ function findCall(turns: StepView[], toolUseId: string): { turn: StepView; idx: 
   return null
 }
 
+/**
+ * Codes only a really-failed layer produces (docs/error-taxonomy.md "Real-failure codes"), so a
+ * ToolError carrying one has an unambiguous origin and layer even when the block has no
+ * `error_class`. ENOENT / EACCES / ETIMEDOUT are deliberately absent: injected or real, nobody can
+ * tell from the code alone, and guessing would be the same lie in the other direction.
+ */
+const REAL_LAYER_FOR: Partial<Record<ErrorCode, ErrorLayer>> = {
+  ESANDBOX: 'sandbox',
+  ETRANSPORT: 'transport',
+  EHARNESS: 'harness',
+  EMODEL: 'model',
+  EGYM: 'gym',
+  EINTERNAL: 'boundary',
+  ENOEPISODE: 'boundary',
+}
+
 function attachResult(turns: StepView[], msg: Message, b: Block): void {
   const toolUseId = b.tool_use_id
   if (!toolUseId) return
@@ -122,6 +192,44 @@ function attachResult(turns: StepView[], msg: Message, b: Block): void {
   if (result.exitCode === null && typeof b.exit_code === 'number') result.exitCode = b.exit_code
   if (b.truncated) result.truncated = true
   const fault = b.fault ?? null
+  // Provenance the block carries when the Store projects it (additive fields; absent today).
+  result.errorClass = result.isError ? asErrorClass(b.error_class) : null
+  result.outcome = asToolOutcome(b.outcome)
+  if (typeof b.attempts === 'number') result.attempts = Math.max(1, Math.trunc(b.attempts))
+  if (b.sandbox && typeof b.sandbox.id === 'string') result.sandbox = { id: b.sandbox.id, alive: b.sandbox.alive !== false }
+  // Without an error_class, the block still carries structured provenance: a real-failure code in
+  // the ToolError body names who failed, and a `fault` payload names the injected / staged origin.
+  // Synthesise the taxonomy's class from either so the persisted view keeps the same badge and the
+  // same "unknown" / "not executed" status the live view showed (never a red "error" for a dead
+  // worker). Nothing is inferred from message text.
+  if (result.isError && !result.errorClass && result.errorCode) {
+    const layer = REAL_LAYER_FOR[result.errorCode]
+    if (layer) {
+      result.errorClass = {
+        origin: 'real',
+        layer,
+        code: result.errorCode,
+        kind: null,
+        label: taxonomyLabel('real', null, layer) ?? `real: ${result.errorCode}`,
+        outcome_known: layer !== 'transport' && layer !== 'harness',
+        side_effect_applied: null,
+        detail: null,
+      }
+    } else if (fault) {
+      const origin = fault.origin ?? 'injected'
+      const layerOf = fault.layer ?? (origin === 'staged' ? 'filesystem' : 'boundary')
+      result.errorClass = {
+        origin,
+        layer: layerOf,
+        code: result.errorCode,
+        kind: fault.kind,
+        label: taxonomyLabel(origin, fault.kind, layerOf) ?? `${origin}: ${fault.kind}`,
+        outcome_known: fault.kind !== 'ack_lost',
+        side_effect_applied: null,
+        detail: fault.description ?? null,
+      }
+    }
+  }
 
   const hit = findCall(turns, toolUseId)
   if (hit) {
@@ -142,9 +250,9 @@ function attachResult(turns: StepView[], msg: Message, b: Block): void {
  * each assistant message is one turn (thinking / text / tool_use blocks in seq order); the user
  * message that follows carries the tool_result blocks, matched back by tool_use_id.
  *
- * `overlay` supplies what the projection lacks: the grader's evaluation, the run error and the
- * record's status. Without it the transcript has no evaluation — which the UI must render as
- * "not graded", never as a pass.
+ * `overlay` supplies what the projection lacks: the grader's evaluation, the run error and error
+ * class, the record's status and its interruptions / resumes. Without it the transcript has no
+ * evaluation — which the UI must render as "not graded", never as a pass.
  */
 export function transcriptFromMessages(
   messages: Message[],
@@ -211,8 +319,16 @@ export function transcriptFromMessages(
     taskPrompt,
     turns: recovered.map((t) => ({ step: t.step, thinking: t.thinking, texts: t.texts, calls: t.calls })),
     evaluation,
-    score: evaluation?.score ?? run.score ?? null,
+    // A summary score only means something for a run that was actually graded (legacy `error`
+    // rows in the Store carry `score: 0.0`; showing that would invent a grade).
+    score: evaluation?.score ?? (status === 'ok' || status === 'truncated' ? (run.score ?? null) : null),
     error: overlay.error ?? null,
+    errorClass: overlay.errorClass ?? null,
+    evaluationStatus: overlay.evaluationStatus ?? null,
+    evaluationError: overlay.evaluationError ?? null,
+    interruptions: overlay.interruptions ?? [],
+    resumes: overlay.resumes ?? [],
+    workerGeneration: overlay.workerGeneration ?? 1,
     live: !isTerminal(status),
   }
 }

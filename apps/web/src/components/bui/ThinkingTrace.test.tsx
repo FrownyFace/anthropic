@@ -36,9 +36,7 @@ describe('ThinkingTrace', () => {
         thinking="Inserting the 0.2.0 section directly above 0.1.0."
         active={false}
         done
-      >
-        <div data-testid="child">chips</div>
-      </ThinkingTrace>,
+      />,
     )
     expect(screen.getByRole('status').textContent).toBe('2 tool calls')
     expect(screen.getByText('1 fault')).toBeTruthy()
@@ -48,9 +46,9 @@ describe('ThinkingTrace', () => {
     expect(screen.getByText('Inserting the 0.2.0 section directly above 0.1.0.')).toBeTruthy()
     expect(screen.getByText('Read')).toBeTruthy()
     expect(screen.getByText('Write')).toBeTruthy()
-    expect(screen.getByText('simulated: ack_lost')).toBeTruthy()
+    // standalone (no chips nested): the rail rows carry the badge trio themselves
+    expect(screen.getByText('simulated: lost ack')).toBeTruthy()
     expect(screen.getByText('read-back seen')).toBeTruthy()
-    expect(screen.getByTestId('child')).toBeTruthy()
 
     // collapsed by default once settled: the panel is hidden from the accessibility tree
     const toggle = screen.getByRole('button', { name: /Step 2 of 20/ })
@@ -69,6 +67,23 @@ describe('ThinkingTrace', () => {
     expect(screen.queryByRole('img', { name: 'error' })).toBeNull()
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('renders the badge trio once: not on the rail when ToolCallChips are nested inside', () => {
+    renderTrace(
+      <ThinkingTrace step={2} maxSteps={20} calls={[readCall, lostAckWrite]} active={false} done defaultOpen>
+        <div data-testid="child">chips</div>
+      </ThinkingTrace>,
+    )
+    expect(screen.getByTestId('child')).toBeTruthy()
+    // header counts still summarise the step…
+    expect(screen.getByText('1 fault')).toBeTruthy()
+    expect(screen.getByText('1 read-back seen')).toBeTruthy()
+    // …but the per-call badges belong to the chips below, not the rail rows
+    expect(screen.queryByText('simulated: lost ack')).toBeNull()
+    expect(screen.queryByText('read-back seen')).toBeNull()
+    expect(document.querySelectorAll('[data-slot="trace-row"]')).toHaveLength(2)
+    expect(document.querySelector('[data-slot="trace-row"][data-tool-use-id="tu_02"]')).not.toBeNull()
   })
 
   it('honours defaultOpen', () => {

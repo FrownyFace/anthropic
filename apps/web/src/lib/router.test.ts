@@ -1,17 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  ROUTE_EVENT,
-  currentRoute,
-  hrefFor,
-  navigate,
-  parseRoute,
-  sameRoute,
-  subscribeRoute,
-  useRoute,
-  type Route,
-} from './router'
+import { ROUTE_EVENT, hrefFor, navigate, parseRoute, subscribeRoute, useRoute, type Route } from './router'
 
 afterEach(() => {
   window.history.replaceState({}, '', '/')
@@ -80,22 +70,17 @@ describe('hrefFor / parseRoute round trip', () => {
     expect(hrefFor({ kind: 'run', runId: 'r_1' })).toBe('/runs/r_1')
     expect(hrefFor({ kind: 'replay', demoId: 'lost-ack' })).toBe('/replay/lost-ack')
   })
-
-  it('sameRoute compares structurally', () => {
-    expect(sameRoute({ kind: 'conversation', id: 'c_1' }, { kind: 'conversation', id: 'c_1', runId: null })).toBe(true)
-    expect(sameRoute({ kind: 'run', runId: 'a' }, { kind: 'run', runId: 'b' })).toBe(false)
-  })
 })
 
 describe('navigate', () => {
-  it('pushes the href, updates currentRoute() and notifies subscribers', () => {
+  it('pushes the href, updates the parsed location and notifies subscribers', () => {
     const fn = vi.fn()
     const off = subscribeRoute(fn)
     const before = window.history.length
 
     navigate({ kind: 'run', runId: 'r_1' })
     expect(window.location.pathname).toBe('/runs/r_1')
-    expect(currentRoute()).toEqual({ kind: 'run', runId: 'r_1' })
+    expect(parseRoute(window.location.pathname, window.location.search)).toEqual({ kind: 'run', runId: 'r_1' })
     expect(fn).toHaveBeenCalledTimes(1)
     expect(window.history.length).toBe(before + 1)
 

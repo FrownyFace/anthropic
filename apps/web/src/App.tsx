@@ -13,7 +13,7 @@ import { RunPage } from '@/pages/RunPage'
  * Routes (path based, no router dependency — see src/lib/router.ts):
  *   /                        new run (composer + scenarios)
  *   /conversations/:id       a conversation loaded from the SQLite store via REST; ?run=<id> picks a run
- *   /runs/:id                a run outside a conversation (harness without the store)
+ *   /runs/:id                a run addressed by id alone; upgrades itself to its conversation once the record says which
  *   /replay/:demoId          bundled recorded run
  */
 export default function App() {

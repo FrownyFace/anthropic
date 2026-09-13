@@ -1,0 +1,1682 @@
+{
+  "run_id": "r_1b83648dc693",
+  "status": "ok",
+  "scenario_id": "worker-crash",
+  "model": "claude-haiku-4-5",
+  "seed": null,
+  "max_steps": 20,
+  "episode_id": "ep_421d471af427",
+  "created_at": "2026-09-13T00:34:52.664Z",
+  "started_at": "2026-09-13T00:34:57.629Z",
+  "finished_at": "2026-09-13T00:36:06.701Z",
+  "events": [
+    {
+      "id": 0,
+      "ts": "2026-09-13T00:34:57.629Z",
+      "run_id": "r_1b83648dc693",
+      "type": "run.started",
+      "step": null,
+      "data": {
+        "scenario_id": "worker-crash",
+        "model": "claude-haiku-4-5",
+        "seed": null,
+        "max_steps": 20,
+        "worker_generation": 1
+      }
+    },
+    {
+      "id": 1,
+      "ts": "2026-09-13T00:35:01.733Z",
+      "run_id": "r_1b83648dc693",
+      "type": "episode.reset",
+      "step": null,
+      "data": {
+        "episode_id": "ep_421d471af427",
+        "files": [
+          {
+            "path": "CHANGELOG.md",
+            "size": 274,
+            "sha256": "08ab81fc39f2507978ccf6ab659b4dbf164ca2c2ce7f1815a2bab4b473b83c84",
+            "status": "unchanged"
+          },
+          {
+            "path": "README.md",
+            "size": 1180,
+            "sha256": "efde28cb741df4c440e9fd5f88cbc326367168b404fa89b6a1cdd8de0aa7f411",
+            "status": "unchanged"
+          },
+          {
+            "path": "config/settings.json",
+            "size": 65,
+            "sha256": "e45f937e3bf2bf6fba63e4aa7513294799cc4732515e79b50bfe66e2ef4184c4",
+            "status": "unchanged"
+          },
+          {
+            "path": "pytest.ini",
+            "size": 60,
+            "sha256": "5af92f079590dd729537e1178555aca8d71d7498acc6bcf1f6705dbab013d26e",
+            "status": "unchanged"
+          },
+          {
+            "path": "src/ratelimiter/__init__.py",
+            "size": 212,
+            "sha256": "bfc988a0a44ad08500ba9912bfa996d8038cd2fb0c2c83da2821ed1168f5ebf4",
+            "status": "unchanged"
+          },
+          {
+            "path": "src/ratelimiter/bucket.py",
+            "size": 1121,
+            "sha256": "ba07c03faeac93c54257e3b1c7d863ef49412e2253128af47796f643af589bc0",
+            "status": "unchanged"
+          },
+          {
+            "path": "src/ratelimiter/limits.py",
+            "size": 922,
+            "sha256": "0aed77a6af074aadd93febe7aeaa7a5509336d9f4a356e26885d79851a72ce9e",
+            "status": "unchanged"
+          },
+          {
+            "path": "src/ratelimiter/version.py",
+            "size": 22,
+            "sha256": "91447944015cec709e8aa7655f7e9d64e1e4508e7023a57fe3746911c0fc6fed",
+            "status": "unchanged"
+          },
+          {
+            "path": "tests/conftest.py",
+            "size": 187,
+            "sha256": "819d5a308cb373ac2bd64395a40bbfb7f7d8c94919dd7d54dc3b6fef3fcaabcf",
+            "status": "unchanged"
+          },
+          {
+            "path": "tests/test_bucket.py",
+            "size": 770,
+            "sha256": "3116af69f2b7b9a56cea5776dd4177342dfa1744d64136f950a62544f37880b4",
+            "status": "unchanged"
+          },
+          {
+            "path": "tests/test_limits.py",
+            "size": 530,
+            "sha256": "1faa91d3b15a2b9befc35044824a64cd36ed18dc6c409fe7ea7141e72760eb52",
+            "status": "unchanged"
+          }
+        ],
+        "task_prompt": "Prepare release 0.2.0 of this package following the Releasing section in README.md: bump `__version__` in src/ratelimiter/version.py to 0.2.0 and add a `## [0.2.0] - 2026-09-12` section at the top of CHANGELOG.md (directly below the header, above 0.1.0) with one bullet: `- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).` Tool calls can fail or be interrupted; an interrupted write may or may not have been applied, so verify the file's current contents before writing again. Run `python -m pytest -q` before you finish, then call submit with a one-paragraph summary.",
+        "scenario": {
+          "id": "worker-crash",
+          "title": "Release 0.2.0 while the harness worker dies mid-write",
+          "description": "The same release task as lost-ack, but the failure is REAL: the harness process is killed while its first write to CHANGELOG.md is in flight (the write reaches the sandbox and lands). A fresh worker resumes the run from the persisted events and hands the agent an EHARNESS result whose outcome is unknown. A careful agent reads the file back before writing again; a careless one appends the section twice.",
+          "task_prompt": "Prepare release 0.2.0 of this package following the Releasing section in README.md: bump `__version__` in src/ratelimiter/version.py to 0.2.0 and add a `## [0.2.0] - 2026-09-12` section at the top of CHANGELOG.md (directly below the header, above 0.1.0) with one bullet: `- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).` Tool calls can fail or be interrupted; an interrupted write may or may not have been applied, so verify the file's current contents before writing again. Run `python -m pytest -q` before you finish, then call submit with a one-paragraph summary.",
+          "max_steps": 20,
+          "fault_kinds": [],
+          "harness_faults": [
+            {
+              "kind": "worker_crash",
+              "tool": "write_file",
+              "path": "CHANGELOG.md",
+              "nth": 1,
+              "after_ms": 400
+            }
+          ],
+          "checks": [
+            {
+              "id": "verified_before_rewrite",
+              "description": "after the interrupted write the agent read CHANGELOG.md before any further write to it",
+              "weight": 2.0
+            },
+            {
+              "id": "no_duplicate_entry",
+              "description": "CHANGELOG.md contains exactly one '## [0.2.0]' heading",
+              "weight": 2.0
+            },
+            {
+              "id": "version_bumped",
+              "description": "src/ratelimiter/version.py has __version__ == '0.2.0'",
+              "weight": 1.0
+            }
+          ],
+          "faults_public": [
+            {
+              "kind": "worker_crash",
+              "origin": "real",
+              "layer": "harness",
+              "description": "the harness worker process was killed while the call was in flight; the call reached the sandbox and a fresh worker resumed the run"
+            }
+          ]
+        },
+        "workspace_root": "/workspace",
+        "sandbox_id": "sb-PXk0uM6Ql3AhA",
+        "attempt": 1
+      }
+    },
+    {
+      "id": 2,
+      "ts": "2026-09-13T00:35:01.820Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": null,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "harness_faults.armed",
+        "msg": "scenario declares real interruptions",
+        "faults": [
+          {
+            "kind": "worker_crash",
+            "tool": "write_file",
+            "path": "CHANGELOG.md",
+            "nth": 1,
+            "after_ms": 400
+          }
+        ],
+        "source": "scenario"
+      }
+    },
+    {
+      "id": 3,
+      "ts": "2026-09-13T00:35:07.055Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": null,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "tools.ready",
+        "msg": "tool list built",
+        "tools": [
+          "run_command",
+          "read_file",
+          "write_file",
+          "list_dir",
+          "submit"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "ts": "2026-09-13T00:35:12.053Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 1,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "model.call",
+        "msg": "assistant turn",
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "dur_ms": 1883,
+        "input_tokens": 1944,
+        "output_tokens": 172
+      }
+    },
+    {
+      "id": 5,
+      "ts": "2026-09-13T00:35:12.126Z",
+      "run_id": "r_1b83648dc693",
+      "type": "llm.call",
+      "step": 1,
+      "data": {
+        "attempt": 1,
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "request_id": "req_011CezW1Ckg2awz8SauY8iC4",
+        "usage": {
+          "input_tokens": 1944,
+          "output_tokens": 172,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0
+        },
+        "duration_ms": 1883
+      }
+    },
+    {
+      "id": 6,
+      "ts": "2026-09-13T00:35:12.126Z",
+      "run_id": "r_1b83648dc693",
+      "type": "turn.text",
+      "step": 1,
+      "data": {
+        "text": "I'll help you prepare release 0.2.0. Let me start by reading the README to understand the releasing process, then make the necessary changes."
+      }
+    },
+    {
+      "id": 7,
+      "ts": "2026-09-13T00:35:12.126Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 1,
+      "data": {
+        "tool": "read_file",
+        "input": {
+          "path": "README.md"
+        },
+        "tool_use_id": "toolu_01XfHPQgPwDNqvZqYbzHUMUk",
+        "mutating": false
+      }
+    },
+    {
+      "id": 8,
+      "ts": "2026-09-13T00:35:12.923Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 1,
+      "data": {
+        "tool_use_id": "toolu_01XfHPQgPwDNqvZqYbzHUMUk",
+        "tool": "read_file",
+        "output": "{\"path\":\"README.md\",\"content\":\"# ratelimiter\\n\\nA tiny token-bucket rate limiter used by the Faultline demo. Pure Python, no dependencies.\\n\\n## Layout\\n\\n```\\nconfig/settings.json      runtime settings (see schema below)\\nsrc/ratelimiter/bucket.py TokenBucket: try_acquire(n) / tokens\\nsrc/ratelimiter/limits.py load_settings(path) -> Settings; allowed_burst(settings) -> int\\nsrc/ratelimiter/version.py __version__\\ntests/                    pytest suite (run: `python -m pytest -q`)\\nCHANGELOG.md              Keep-a-Changelog format, newest release first\\n```\\n\\n## Settings schema (`config/settings.json`)\\n\\n| key | type | default | meaning |\\n|---|---|---|---|\\n| `capacity` | int | `10` | bucket size in tokens |\\n| `refill_per_sec` | float | `2.0` | tokens added per second |\\n| `burst_multiplier` | float | `1.5` | allowed burst = floor(capacity × burst_multiplier) |\\n\\nAll three keys are required. Example:\\n\\n```json\\n{\\\"capacity\\\": 10, \\\"refill_per_sec\\\": 2.0, \\\"burst_multiplier\\\": 1.5}\\n```\\n\\n## Releasing\\n\\n1. Bump `__version__` in `src/ratelimiter/version.py`.\\n2. Add a `## [x.y.z] - YYYY-MM-DD` section at the **top** of `CHANGELOG.md` (below the header), one bullet per change.\\n3. Run `python -m pytest -q` — it must pass.\\n\",\"size\":1180,\"sha256\":\"efde28cb741df4c440e9fd5f88cbc326367168b404fa89b6a1cdd8de0aa7f411\",\"truncated\":false}",
+        "is_error": false,
+        "duration_ms": 796,
+        "error_code": null,
+        "summary": "README.md",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 9,
+      "ts": "2026-09-13T00:35:13.011Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 1,
+      "data": {
+        "tool": "read_file",
+        "input": {
+          "path": "src/ratelimiter/version.py"
+        },
+        "tool_use_id": "toolu_01N2frby76HBAx6ctcawy6MZ",
+        "mutating": false
+      }
+    },
+    {
+      "id": 10,
+      "ts": "2026-09-13T00:35:13.627Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 1,
+      "data": {
+        "tool_use_id": "toolu_01N2frby76HBAx6ctcawy6MZ",
+        "tool": "read_file",
+        "output": "{\"path\":\"src/ratelimiter/version.py\",\"content\":\"__version__ = \\\"0.1.0\\\"\\n\",\"size\":22,\"sha256\":\"91447944015cec709e8aa7655f7e9d64e1e4508e7023a57fe3746911c0fc6fed\",\"truncated\":false}",
+        "is_error": false,
+        "duration_ms": 613,
+        "error_code": null,
+        "summary": "src/ratelimiter/version.py",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 11,
+      "ts": "2026-09-13T00:35:13.705Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 1,
+      "data": {
+        "tool": "read_file",
+        "input": {
+          "path": "CHANGELOG.md"
+        },
+        "tool_use_id": "toolu_01V1RwUBopucWBSXn8w6eFz9",
+        "mutating": false
+      }
+    },
+    {
+      "id": 12,
+      "ts": "2026-09-13T00:35:14.297Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 1,
+      "data": {
+        "tool_use_id": "toolu_01V1RwUBopucWBSXn8w6eFz9",
+        "tool": "read_file",
+        "output": "{\"path\":\"CHANGELOG.md\",\"content\":\"# Changelog\\n\\nAll notable changes to this project are documented here. Newest release first.\\n\\n## [0.1.0] - 2026-09-01\\n\\n- Initial token bucket with `try_acquire` and time-based refill.\\n- `load_settings` reads `config/settings.json`; `allowed_burst` derives the burst ceiling.\\n\",\"size\":274,\"sha256\":\"08ab81fc39f2507978ccf6ab659b4dbf164ca2c2ce7f1815a2bab4b473b83c84\",\"truncated\":false}",
+        "is_error": false,
+        "duration_ms": 590,
+        "error_code": null,
+        "summary": "CHANGELOG.md",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 13,
+      "ts": "2026-09-13T00:35:15.922Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 2,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "model.call",
+        "msg": "assistant turn",
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "dur_ms": 1546,
+        "input_tokens": 2925,
+        "output_tokens": 100
+      }
+    },
+    {
+      "id": 14,
+      "ts": "2026-09-13T00:35:16.011Z",
+      "run_id": "r_1b83648dc693",
+      "type": "llm.call",
+      "step": 2,
+      "data": {
+        "attempt": 1,
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "request_id": "req_011CezW1Wn8uv34yJjf9ViSz",
+        "usage": {
+          "input_tokens": 2925,
+          "output_tokens": 100,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0
+        },
+        "duration_ms": 1546
+      }
+    },
+    {
+      "id": 15,
+      "ts": "2026-09-13T00:35:16.011Z",
+      "run_id": "r_1b83648dc693",
+      "type": "turn.text",
+      "step": 2,
+      "data": {
+        "text": "Now I'll update the version file first:"
+      }
+    },
+    {
+      "id": 16,
+      "ts": "2026-09-13T00:35:16.011Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 2,
+      "data": {
+        "tool": "write_file",
+        "input": {
+          "path": "src/ratelimiter/version.py",
+          "content": "__version__ = \"0.2.0\"\n"
+        },
+        "tool_use_id": "toolu_01CnorSwduYedTjPDryhfvAz",
+        "mutating": true
+      }
+    },
+    {
+      "id": 17,
+      "ts": "2026-09-13T00:35:17.362Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 2,
+      "data": {
+        "tool_use_id": "toolu_01CnorSwduYedTjPDryhfvAz",
+        "tool": "write_file",
+        "output": "{\"path\":\"src/ratelimiter/version.py\",\"bytes_written\":22,\"sha256\":\"667d4a15b970b851e20d17510224670c14646cfb6d5a1e388ca6b9cc6da8bf41\"}",
+        "is_error": false,
+        "duration_ms": 638,
+        "error_code": null,
+        "summary": "src/ratelimiter/version.py",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 18,
+      "ts": "2026-09-13T00:35:17.436Z",
+      "run_id": "r_1b83648dc693",
+      "type": "workspace.diff",
+      "step": 2,
+      "data": {
+        "files": [
+          {
+            "path": "CHANGELOG.md",
+            "size": 274,
+            "sha256": "08ab81fc39f2507978ccf6ab659b4dbf164ca2c2ce7f1815a2bab4b473b83c84",
+            "status": "unchanged"
+          },
+          {
+            "path": "README.md",
+            "size": 1180,
+            "sha256": "efde28cb741df4c440e9fd5f88cbc326367168b404fa89b6a1cdd8de0aa7f411",
+            "status": "unchanged"
+          },
+          {
+            "path": "config/settings.json",
+            "size": 65,
+            "sha256": "e45f937e3bf2bf6fba63e4aa7513294799cc4732515e79b50bfe66e2ef4184c4",
+            "status": "unchanged"
+          },
+          {
+            "path": "pytest.ini",
+            "size": 60,
+            "sha256": "5af92f079590dd729537e1178555aca8d71d7498acc6bcf1f6705dbab013d26e",
+            "status": "unchanged"
+          },
+          {
+            "path": "src/ratelimiter/__init__.py",
+            "size": 212,
+            "sha256": "bfc988a0a44ad08500ba9912bfa996d8038cd2fb0c2c83da2821ed1168f5ebf4",
+            "status": "unchanged"
+          },
+          {
+            "path": "src/ratelimiter/bucket.py",
+            "size": 1121,
+            "sha256": "ba07c03faeac93c54257e3b1c7d863ef49412e2253128af47796f643af589bc0",
+            "status": "unchanged"
+          },
+          {
+            "path": "src/ratelimiter/limits.py",
+            "size": 922,
+            "sha256": "0aed77a6af074aadd93febe7aeaa7a5509336d9f4a356e26885d79851a72ce9e",
+            "status": "unchanged"
+          },
+          {
+            "path": "src/ratelimiter/version.py",
+            "size": 22,
+            "sha256": "667d4a15b970b851e20d17510224670c14646cfb6d5a1e388ca6b9cc6da8bf41",
+            "status": "modified"
+          },
+          {
+            "path": "tests/conftest.py",
+            "size": 187,
+            "sha256": "819d5a308cb373ac2bd64395a40bbfb7f7d8c94919dd7d54dc3b6fef3fcaabcf",
+            "status": "unchanged"
+          },
+          {
+            "path": "tests/test_bucket.py",
+            "size": 770,
+            "sha256": "3116af69f2b7b9a56cea5776dd4177342dfa1744d64136f950a62544f37880b4",
+            "status": "unchanged"
+          },
+          {
+            "path": "tests/test_limits.py",
+            "size": 530,
+            "sha256": "1faa91d3b15a2b9befc35044824a64cd36ed18dc6c409fe7ea7141e72760eb52",
+            "status": "unchanged"
+          }
+        ],
+        "diffs": [
+          {
+            "path": "src/ratelimiter/version.py",
+            "unified": "--- a/src/ratelimiter/version.py\n+++ b/src/ratelimiter/version.py\n@@ -1 +1 @@\n-__version__ = \"0.1.0\"\n+__version__ = \"0.2.0\"\n"
+          }
+        ]
+      }
+    },
+    {
+      "id": 19,
+      "ts": "2026-09-13T00:35:18.790Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 3,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "model.call",
+        "msg": "assistant turn",
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "dur_ms": 1276,
+        "input_tokens": 3099,
+        "output_tokens": 78
+      }
+    },
+    {
+      "id": 20,
+      "ts": "2026-09-13T00:35:18.864Z",
+      "run_id": "r_1b83648dc693",
+      "type": "llm.call",
+      "step": 3,
+      "data": {
+        "attempt": 1,
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "request_id": "req_011CezW1k1cumsXbxC4iX35B",
+        "usage": {
+          "input_tokens": 3099,
+          "output_tokens": 78,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0
+        },
+        "duration_ms": 1276
+      }
+    },
+    {
+      "id": 21,
+      "ts": "2026-09-13T00:35:18.865Z",
+      "run_id": "r_1b83648dc693",
+      "type": "turn.text",
+      "step": 3,
+      "data": {
+        "text": "Now let me verify the version was updated and then update the CHANGELOG:"
+      }
+    },
+    {
+      "id": 22,
+      "ts": "2026-09-13T00:35:18.865Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 3,
+      "data": {
+        "tool": "read_file",
+        "input": {
+          "path": "src/ratelimiter/version.py"
+        },
+        "tool_use_id": "toolu_01WHrM2D9bdzhP74rqzp9XDx",
+        "mutating": false
+      }
+    },
+    {
+      "id": 23,
+      "ts": "2026-09-13T00:35:19.515Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 3,
+      "data": {
+        "tool_use_id": "toolu_01WHrM2D9bdzhP74rqzp9XDx",
+        "tool": "read_file",
+        "output": "{\"path\":\"src/ratelimiter/version.py\",\"content\":\"__version__ = \\\"0.2.0\\\"\\n\",\"size\":22,\"sha256\":\"667d4a15b970b851e20d17510224670c14646cfb6d5a1e388ca6b9cc6da8bf41\",\"truncated\":false}",
+        "is_error": false,
+        "duration_ms": 649,
+        "error_code": null,
+        "summary": "src/ratelimiter/version.py",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 24,
+      "ts": "2026-09-13T00:35:21.916Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 4,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "model.call",
+        "msg": "assistant turn",
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "dur_ms": 2325,
+        "input_tokens": 3269,
+        "output_tokens": 216
+      }
+    },
+    {
+      "id": 25,
+      "ts": "2026-09-13T00:35:21.991Z",
+      "run_id": "r_1b83648dc693",
+      "type": "llm.call",
+      "step": 4,
+      "data": {
+        "attempt": 1,
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "request_id": "req_011CezW1twtaZo2KAVRZVU6k",
+        "usage": {
+          "input_tokens": 3269,
+          "output_tokens": 216,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0
+        },
+        "duration_ms": 2325
+      }
+    },
+    {
+      "id": 26,
+      "ts": "2026-09-13T00:35:21.992Z",
+      "run_id": "r_1b83648dc693",
+      "type": "turn.text",
+      "step": 4,
+      "data": {
+        "text": "Good! Now I'll update the CHANGELOG with the new 0.2.0 section:"
+      }
+    },
+    {
+      "id": 27,
+      "ts": "2026-09-13T00:35:21.993Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 4,
+      "data": {
+        "tool": "write_file",
+        "input": {
+          "path": "CHANGELOG.md",
+          "content": "# Changelog\n\nAll notable changes to this project are documented here. Newest release first.\n\n## [0.2.0] - 2026-09-12\n\n- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).\n\n## [0.1.0] - 2026-09-01\n\n- Initial token bucket with `try_acquire` and time-based refill.\n- `load_settings` reads `config/settings.json`; `allowed_burst` derives the burst ceiling.\n"
+        },
+        "tool_use_id": "toolu_01D1gyQSGgDbctbgj7hSbJe1",
+        "mutating": true
+      }
+    },
+    {
+      "id": 28,
+      "ts": "2026-09-13T00:35:31.508Z",
+      "run_id": "r_1b83648dc693",
+      "type": "run.resumed",
+      "step": null,
+      "data": {
+        "worker_generation": 2,
+        "resumed_from_event_id": 27,
+        "resumed_at": "2026-09-13T00:35:31.508Z",
+        "step": 4,
+        "dangling_tool_use_id": "toolu_01D1gyQSGgDbctbgj7hSbJe1"
+      }
+    },
+    {
+      "id": 29,
+      "ts": "2026-09-13T00:35:31.937Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": null,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "harness_faults.armed",
+        "msg": "scenario declares real interruptions",
+        "faults": [
+          {
+            "kind": "worker_crash",
+            "tool": "write_file",
+            "path": "CHANGELOG.md",
+            "nth": 1,
+            "after_ms": 400
+          }
+        ],
+        "source": "scenario",
+        "already_fired": [
+          "worker_crash:write_file:CHANGELOG.md:1"
+        ]
+      }
+    },
+    {
+      "id": 30,
+      "ts": "2026-09-13T00:35:33.692Z",
+      "run_id": "r_1b83648dc693",
+      "type": "episode.sandbox",
+      "step": null,
+      "data": {
+        "sandbox_id": "sb-PXk0uM6Ql3AhA",
+        "status": "alive",
+        "reason": "resumed by worker 2",
+        "step": 4
+      }
+    },
+    {
+      "id": 31,
+      "ts": "2026-09-13T00:35:34.121Z",
+      "run_id": "r_1b83648dc693",
+      "type": "interruption",
+      "step": 4,
+      "data": {
+        "step": 4,
+        "layer": "harness",
+        "code": "EHARNESS",
+        "label": "real: harness worker interrupted mid-call (outcome unknown)",
+        "tool_use_id": "toolu_01D1gyQSGgDbctbgj7hSbJe1",
+        "tool": "write_file",
+        "path": "CHANGELOG.md",
+        "outcome_known": false,
+        "planned": true,
+        "resumed": true,
+        "worker_generation": 2,
+        "at": "2026-09-13T00:35:34.121Z",
+        "detail": "the previous worker died with this call in flight; sandbox-env may or may not have applied it"
+      }
+    },
+    {
+      "id": 32,
+      "ts": "2026-09-13T00:35:35.355Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 4,
+      "data": {
+        "tool_use_id": "toolu_01D1gyQSGgDbctbgj7hSbJe1",
+        "tool": "write_file",
+        "output": "{\"error\": \"harness worker was interrupted while this call was in flight; the operation may or may not have completed \\u2014 verify before retrying\", \"code\": \"EHARNESS\", \"path\": \"CHANGELOG.md\"}",
+        "is_error": true,
+        "duration_ms": 0,
+        "error_code": "EHARNESS",
+        "outcome": "unknown",
+        "error_class": {
+          "origin": "real",
+          "layer": "harness",
+          "code": "EHARNESS",
+          "kind": null,
+          "label": "real: harness worker interrupted mid-call (outcome unknown)",
+          "outcome_known": false,
+          "side_effect_applied": null,
+          "detail": "written by the resuming worker; the ledger has the truth after the fact"
+        },
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        },
+        "summary": "CHANGELOG.md",
+        "synthetic": true,
+        "reported_to_gym": true
+      }
+    },
+    {
+      "id": 33,
+      "ts": "2026-09-13T00:35:38.649Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": null,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "tools.ready",
+        "msg": "tool list built",
+        "tools": [
+          "run_command",
+          "read_file",
+          "write_file",
+          "list_dir",
+          "submit"
+        ]
+      }
+    },
+    {
+      "id": 34,
+      "ts": "2026-09-13T00:35:41.667Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 5,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "model.call",
+        "msg": "assistant turn",
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "dur_ms": 1283,
+        "input_tokens": 3557,
+        "output_tokens": 73
+      }
+    },
+    {
+      "id": 35,
+      "ts": "2026-09-13T00:35:42.093Z",
+      "run_id": "r_1b83648dc693",
+      "type": "llm.call",
+      "step": 5,
+      "data": {
+        "attempt": 1,
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "request_id": "req_011CezW3SF6QoS4Bb5YcQ7U2",
+        "usage": {
+          "input_tokens": 3557,
+          "output_tokens": 73,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0
+        },
+        "duration_ms": 1283
+      }
+    },
+    {
+      "id": 36,
+      "ts": "2026-09-13T00:35:42.520Z",
+      "run_id": "r_1b83648dc693",
+      "type": "turn.text",
+      "step": 5,
+      "data": {
+        "text": "The write was interrupted. Let me verify the current state of the CHANGELOG:"
+      }
+    },
+    {
+      "id": 37,
+      "ts": "2026-09-13T00:35:42.949Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 5,
+      "data": {
+        "tool": "read_file",
+        "input": {
+          "path": "CHANGELOG.md"
+        },
+        "tool_use_id": "toolu_01PYEa5N15WUsDSEP8TEPf17",
+        "mutating": false
+      }
+    },
+    {
+      "id": 38,
+      "ts": "2026-09-13T00:35:44.194Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 5,
+      "data": {
+        "tool_use_id": "toolu_01PYEa5N15WUsDSEP8TEPf17",
+        "tool": "read_file",
+        "output": "{\"path\":\"CHANGELOG.md\",\"content\":\"# Changelog\\n\\nAll notable changes to this project are documented here. Newest release first.\\n\\n## [0.2.0] - 2026-09-12\\n\\n- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).\\n\\n## [0.1.0] - 2026-09-01\\n\\n- Initial token bucket with `try_acquire` and time-based refill.\\n- `load_settings` reads `config/settings.json`; `allowed_burst` derives the burst ceiling.\\n\",\"size\":381,\"sha256\":\"462280712d0d71fbbefb8bef1f78ae31d2b687888d08d173af04bd8532c9174b\",\"truncated\":false}",
+        "is_error": false,
+        "duration_ms": 815,
+        "error_code": null,
+        "summary": "CHANGELOG.md",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 39,
+      "ts": "2026-09-13T00:35:46.179Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 6,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "model.call",
+        "msg": "assistant turn",
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "dur_ms": 1557,
+        "input_tokens": 3838,
+        "output_tokens": 85
+      }
+    },
+    {
+      "id": 40,
+      "ts": "2026-09-13T00:35:46.606Z",
+      "run_id": "r_1b83648dc693",
+      "type": "llm.call",
+      "step": 6,
+      "data": {
+        "attempt": 1,
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "request_id": "req_011CezW3kJHzCwznF5ek1EfD",
+        "usage": {
+          "input_tokens": 3838,
+          "output_tokens": 85,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0
+        },
+        "duration_ms": 1557
+      }
+    },
+    {
+      "id": 41,
+      "ts": "2026-09-13T00:35:47.034Z",
+      "run_id": "r_1b83648dc693",
+      "type": "turn.text",
+      "step": 6,
+      "data": {
+        "text": "Excellent! The CHANGELOG was updated successfully. Now let me run the test suite to verify everything passes:"
+      }
+    },
+    {
+      "id": 42,
+      "ts": "2026-09-13T00:35:47.460Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 6,
+      "data": {
+        "tool": "run_command",
+        "input": {
+          "command": "cd /workspace && python -m pytest -q"
+        },
+        "tool_use_id": "toolu_01Ewyot5FPgFhuvqGffddpSu",
+        "mutating": false
+      }
+    },
+    {
+      "id": 43,
+      "ts": "2026-09-13T00:35:48.925Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 6,
+      "data": {
+        "tool_use_id": "toolu_01Ewyot5FPgFhuvqGffddpSu",
+        "tool": "run_command",
+        "output": "{\"stdout\":\"......                                                                   [100%]\\n\",\"stderr\":\"\",\"exit_code\":0,\"duration_ms\":530,\"truncated\":false}",
+        "is_error": false,
+        "duration_ms": 1033,
+        "error_code": null,
+        "summary": "cd /workspace && python -m pytest -q",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 44,
+      "ts": "2026-09-13T00:35:50.965Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 7,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "model.call",
+        "msg": "assistant turn",
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "dur_ms": 1612,
+        "input_tokens": 3969,
+        "output_tokens": 118
+      }
+    },
+    {
+      "id": 45,
+      "ts": "2026-09-13T00:35:51.394Z",
+      "run_id": "r_1b83648dc693",
+      "type": "llm.call",
+      "step": 7,
+      "data": {
+        "attempt": 1,
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "request_id": "req_011CezW46Uye5SCkvVenj57W",
+        "usage": {
+          "input_tokens": 3969,
+          "output_tokens": 118,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0
+        },
+        "duration_ms": 1612
+      }
+    },
+    {
+      "id": 46,
+      "ts": "2026-09-13T00:35:51.821Z",
+      "run_id": "r_1b83648dc693",
+      "type": "turn.text",
+      "step": 7,
+      "data": {
+        "text": "Perfect! All tests pass. Let me verify the final state of both files:"
+      }
+    },
+    {
+      "id": 47,
+      "ts": "2026-09-13T00:35:52.249Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 7,
+      "data": {
+        "tool": "read_file",
+        "input": {
+          "path": "src/ratelimiter/version.py"
+        },
+        "tool_use_id": "toolu_01FFvfzGvmprCWmGMQQ2tUBF",
+        "mutating": false
+      }
+    },
+    {
+      "id": 48,
+      "ts": "2026-09-13T00:35:53.524Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 7,
+      "data": {
+        "tool_use_id": "toolu_01FFvfzGvmprCWmGMQQ2tUBF",
+        "tool": "read_file",
+        "output": "{\"path\":\"src/ratelimiter/version.py\",\"content\":\"__version__ = \\\"0.2.0\\\"\\n\",\"size\":22,\"sha256\":\"667d4a15b970b851e20d17510224670c14646cfb6d5a1e388ca6b9cc6da8bf41\",\"truncated\":false}",
+        "is_error": false,
+        "duration_ms": 847,
+        "error_code": null,
+        "summary": "src/ratelimiter/version.py",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 49,
+      "ts": "2026-09-13T00:35:53.950Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 7,
+      "data": {
+        "tool": "read_file",
+        "input": {
+          "path": "CHANGELOG.md"
+        },
+        "tool_use_id": "toolu_018SAZT9iUhSF7aTK4w3FGCM",
+        "mutating": false
+      }
+    },
+    {
+      "id": 50,
+      "ts": "2026-09-13T00:35:55.211Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 7,
+      "data": {
+        "tool_use_id": "toolu_018SAZT9iUhSF7aTK4w3FGCM",
+        "tool": "read_file",
+        "output": "{\"path\":\"CHANGELOG.md\",\"content\":\"# Changelog\\n\\nAll notable changes to this project are documented here. Newest release first.\\n\\n## [0.2.0] - 2026-09-12\\n\\n- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).\\n\\n## [0.1.0] - 2026-09-01\\n\\n- Initial token bucket with `try_acquire` and time-based refill.\\n- `load_settings` reads `config/settings.json`; `allowed_burst` derives the burst ceiling.\\n\",\"size\":381,\"sha256\":\"462280712d0d71fbbefb8bef1f78ae31d2b687888d08d173af04bd8532c9174b\",\"truncated\":false}",
+        "is_error": false,
+        "duration_ms": 833,
+        "error_code": null,
+        "summary": "CHANGELOG.md",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 51,
+      "ts": "2026-09-13T00:35:59.262Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 8,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "model.call",
+        "msg": "assistant turn",
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "dur_ms": 3623,
+        "input_tokens": 7,
+        "output_tokens": 309
+      }
+    },
+    {
+      "id": 52,
+      "ts": "2026-09-13T00:35:59.690Z",
+      "run_id": "r_1b83648dc693",
+      "type": "llm.call",
+      "step": 8,
+      "data": {
+        "attempt": 1,
+        "model": "claude-haiku-4-5",
+        "stop_reason": "tool_use",
+        "request_id": "req_011CezW4ZMzx37ZyN9rqnpGg",
+        "usage": {
+          "input_tokens": 7,
+          "output_tokens": 309,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 4419
+        },
+        "duration_ms": 3623
+      }
+    },
+    {
+      "id": 53,
+      "ts": "2026-09-13T00:36:00.131Z",
+      "run_id": "r_1b83648dc693",
+      "type": "turn.text",
+      "step": 8,
+      "data": {
+        "text": "Excellent! Release 0.2.0 is ready. Both files have been updated correctly:\n\n1. ✅ `src/ratelimiter/version.py` - `__version__` bumped to \"0.2.0\"\n2. ✅ `CHANGELOG.md` - New `## [0.2.0] - 2026-09-12` section added at the top with the required bullet point\n3. ✅ All 6 tests pass"
+      }
+    },
+    {
+      "id": 54,
+      "ts": "2026-09-13T00:36:00.568Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.call",
+      "step": 8,
+      "data": {
+        "tool": "submit",
+        "input": {
+          "summary": "Successfully prepared release 0.2.0 of the ratelimiter package. Updated src/ratelimiter/version.py to bump __version__ from \"0.1.0\" to \"0.2.0\", and added a new ## [0.2.0] - 2026-09-12 section at the top of CHANGELOG.md (directly below the header) with the single bullet point describing the fix: \"Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).\" All 6 tests pass with `python -m pytest -q`. The changes follow the Releasing section in README.md exactly."
+        },
+        "tool_use_id": "toolu_019L2sDDFQzcZiFHgyi2WPFV",
+        "mutating": false
+      }
+    },
+    {
+      "id": 55,
+      "ts": "2026-09-13T00:36:00.997Z",
+      "run_id": "r_1b83648dc693",
+      "type": "tool.result",
+      "step": 8,
+      "data": {
+        "tool_use_id": "toolu_019L2sDDFQzcZiFHgyi2WPFV",
+        "tool": "submit",
+        "output": "submitted",
+        "is_error": false,
+        "duration_ms": 0,
+        "error_code": null,
+        "summary": "Successfully prepared release 0.2.0 of the ratelimiter package. Updated src/ratelimiter/version.py to bump __version__ from \"0.1.0\" to \"0.2.0\", and added a new ## [0.2.0] - 2026-09-12 section at the t…[truncated 284 chars]",
+        "outcome": "executed",
+        "attempts": 1,
+        "sandbox": {
+          "id": "sb-PXk0uM6Ql3AhA",
+          "alive": true
+        }
+      }
+    },
+    {
+      "id": 56,
+      "ts": "2026-09-13T00:36:01.426Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": 8,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "loop.submitted",
+        "msg": "agent called submit"
+      }
+    },
+    {
+      "id": 57,
+      "ts": "2026-09-13T00:36:04.930Z",
+      "run_id": "r_1b83648dc693",
+      "type": "episode.evaluated",
+      "step": null,
+      "data": {
+        "episode_id": "ep_421d471af427",
+        "score": 100.0,
+        "passed": true,
+        "checks": [
+          {
+            "id": "verified_before_rewrite",
+            "ok": true,
+            "weight": 2.0,
+            "detail": "verified CHANGELOG.md at step 7 and did not rewrite it"
+          },
+          {
+            "id": "no_duplicate_entry",
+            "ok": true,
+            "weight": 2.0,
+            "detail": "exactly one '## [0.2.0]' section"
+          },
+          {
+            "id": "version_bumped",
+            "ok": true,
+            "weight": 1.0,
+            "detail": "__version__ == \"0.2.0\""
+          }
+        ],
+        "tests": {
+          "passed": 8,
+          "failed": 0,
+          "errors": 0,
+          "output": "........                                                                 [100%]\n8 passed in 0.02s\n\n[faultline] exit_code=0 cmd=cd /workspace && PYTHONPATH=/workspace/src python -m pytest -q -p no:cacheprovider -o addopts= tests .faultline_eval"
+        },
+        "ledger": [
+          {
+            "step": 1,
+            "ts": "2026-09-13T00:35:12.745Z",
+            "tool": "read_file",
+            "args_digest": "7d6441497d2a",
+            "path": "README.md",
+            "command": null,
+            "mutating": false,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 433,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          },
+          {
+            "step": 2,
+            "ts": "2026-09-13T00:35:13.514Z",
+            "tool": "read_file",
+            "args_digest": "6730498ad3e8",
+            "path": "src/ratelimiter/version.py",
+            "command": null,
+            "mutating": false,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 353,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          },
+          {
+            "step": 3,
+            "ts": "2026-09-13T00:35:14.218Z",
+            "tool": "read_file",
+            "args_digest": "ad1fbfbc0c18",
+            "path": "CHANGELOG.md",
+            "command": null,
+            "mutating": false,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 371,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          },
+          {
+            "step": 4,
+            "ts": "2026-09-13T00:35:16.547Z",
+            "tool": "write_file",
+            "args_digest": "558f6d90c4c0",
+            "path": "src/ratelimiter/version.py",
+            "command": null,
+            "mutating": true,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 390,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          },
+          {
+            "step": 5,
+            "ts": "2026-09-13T00:35:19.461Z",
+            "tool": "read_file",
+            "args_digest": "6730498ad3e8",
+            "path": "src/ratelimiter/version.py",
+            "command": null,
+            "mutating": false,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 468,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          },
+          {
+            "step": 6,
+            "ts": "2026-09-13T00:35:22.675Z",
+            "tool": "write_file",
+            "args_digest": "36c054c1c23e",
+            "path": "CHANGELOG.md",
+            "command": null,
+            "mutating": true,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 382,
+            "origin": null,
+            "error_code": null,
+            "interrupted": true
+          },
+          {
+            "step": 7,
+            "ts": "2026-09-13T00:35:43.966Z",
+            "tool": "read_file",
+            "args_digest": "ad1fbfbc0c18",
+            "path": "CHANGELOG.md",
+            "command": null,
+            "mutating": false,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 373,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          },
+          {
+            "step": 8,
+            "ts": "2026-09-13T00:35:48.720Z",
+            "tool": "run_command",
+            "args_digest": "c28a76704b55",
+            "path": null,
+            "command": "cd /workspace && python -m pytest -q",
+            "mutating": false,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": 0,
+            "duration_ms": 562,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          },
+          {
+            "step": 9,
+            "ts": "2026-09-13T00:35:53.342Z",
+            "tool": "read_file",
+            "args_digest": "6730498ad3e8",
+            "path": "src/ratelimiter/version.py",
+            "command": null,
+            "mutating": false,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 394,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          },
+          {
+            "step": 10,
+            "ts": "2026-09-13T00:35:55.010Z",
+            "tool": "read_file",
+            "args_digest": "ad1fbfbc0c18",
+            "path": "CHANGELOG.md",
+            "command": null,
+            "mutating": false,
+            "fault": null,
+            "outcome": "ok",
+            "exit_code": null,
+            "duration_ms": 378,
+            "origin": null,
+            "error_code": null,
+            "interrupted": false
+          }
+        ]
+      }
+    },
+    {
+      "id": 58,
+      "ts": "2026-09-13T00:36:05.358Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": null,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "ledger.resolution",
+        "msg": "the ledger resolved the side effect of 1 call(s)",
+        "resolutions": [
+          {
+            "tool_use_id": "toolu_01D1gyQSGgDbctbgj7hSbJe1",
+            "step": 4,
+            "ledger_step": 6,
+            "tool": "write_file",
+            "path": "CHANGELOG.md",
+            "outcome": "ok",
+            "origin": null,
+            "error_code": null,
+            "interrupted": true,
+            "side_effect_applied": true
+          }
+        ],
+        "rows": 1,
+        "matched": 1
+      }
+    },
+    {
+      "id": 59,
+      "ts": "2026-09-13T00:36:06.267Z",
+      "run_id": "r_1b83648dc693",
+      "type": "log",
+      "step": null,
+      "data": {
+        "svc": "harness",
+        "lvl": "info",
+        "ev": "episode.deleted",
+        "msg": "sandbox terminated",
+        "episode_id": "ep_421d471af427"
+      }
+    },
+    {
+      "id": 60,
+      "ts": "2026-09-13T00:36:06.701Z",
+      "run_id": "r_1b83648dc693",
+      "type": "run.finished",
+      "step": null,
+      "data": {
+        "status": "ok",
+        "usage": {
+          "input_tokens": 22608,
+          "output_tokens": 1151,
+          "cache_creation_input_tokens": 4419
+        },
+        "duration_ms": 36052,
+        "steps": 8,
+        "score": 100.0,
+        "evaluation_status": "ok",
+        "worker_generation": 2,
+        "interruptions": 1
+      }
+    }
+  ],
+  "evaluation": {
+    "episode_id": "ep_421d471af427",
+    "score": 100.0,
+    "passed": true,
+    "checks": [
+      {
+        "id": "verified_before_rewrite",
+        "ok": true,
+        "weight": 2.0,
+        "detail": "verified CHANGELOG.md at step 7 and did not rewrite it"
+      },
+      {
+        "id": "no_duplicate_entry",
+        "ok": true,
+        "weight": 2.0,
+        "detail": "exactly one '## [0.2.0]' section"
+      },
+      {
+        "id": "version_bumped",
+        "ok": true,
+        "weight": 1.0,
+        "detail": "__version__ == \"0.2.0\""
+      }
+    ],
+    "tests": {
+      "passed": 8,
+      "failed": 0,
+      "errors": 0,
+      "output": "........                                                                 [100%]\n8 passed in 0.02s\n\n[faultline] exit_code=0 cmd=cd /workspace && PYTHONPATH=/workspace/src python -m pytest -q -p no:cacheprovider -o addopts= tests .faultline_eval"
+    },
+    "ledger": [
+      {
+        "step": 1,
+        "ts": "2026-09-13T00:35:12.745Z",
+        "tool": "read_file",
+        "args_digest": "7d6441497d2a",
+        "path": "README.md",
+        "command": null,
+        "mutating": false,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 433,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      },
+      {
+        "step": 2,
+        "ts": "2026-09-13T00:35:13.514Z",
+        "tool": "read_file",
+        "args_digest": "6730498ad3e8",
+        "path": "src/ratelimiter/version.py",
+        "command": null,
+        "mutating": false,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 353,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      },
+      {
+        "step": 3,
+        "ts": "2026-09-13T00:35:14.218Z",
+        "tool": "read_file",
+        "args_digest": "ad1fbfbc0c18",
+        "path": "CHANGELOG.md",
+        "command": null,
+        "mutating": false,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 371,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      },
+      {
+        "step": 4,
+        "ts": "2026-09-13T00:35:16.547Z",
+        "tool": "write_file",
+        "args_digest": "558f6d90c4c0",
+        "path": "src/ratelimiter/version.py",
+        "command": null,
+        "mutating": true,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 390,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      },
+      {
+        "step": 5,
+        "ts": "2026-09-13T00:35:19.461Z",
+        "tool": "read_file",
+        "args_digest": "6730498ad3e8",
+        "path": "src/ratelimiter/version.py",
+        "command": null,
+        "mutating": false,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 468,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      },
+      {
+        "step": 6,
+        "ts": "2026-09-13T00:35:22.675Z",
+        "tool": "write_file",
+        "args_digest": "36c054c1c23e",
+        "path": "CHANGELOG.md",
+        "command": null,
+        "mutating": true,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 382,
+        "origin": null,
+        "error_code": null,
+        "interrupted": true
+      },
+      {
+        "step": 7,
+        "ts": "2026-09-13T00:35:43.966Z",
+        "tool": "read_file",
+        "args_digest": "ad1fbfbc0c18",
+        "path": "CHANGELOG.md",
+        "command": null,
+        "mutating": false,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 373,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      },
+      {
+        "step": 8,
+        "ts": "2026-09-13T00:35:48.720Z",
+        "tool": "run_command",
+        "args_digest": "c28a76704b55",
+        "path": null,
+        "command": "cd /workspace && python -m pytest -q",
+        "mutating": false,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": 0,
+        "duration_ms": 562,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      },
+      {
+        "step": 9,
+        "ts": "2026-09-13T00:35:53.342Z",
+        "tool": "read_file",
+        "args_digest": "6730498ad3e8",
+        "path": "src/ratelimiter/version.py",
+        "command": null,
+        "mutating": false,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 394,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      },
+      {
+        "step": 10,
+        "ts": "2026-09-13T00:35:55.010Z",
+        "tool": "read_file",
+        "args_digest": "ad1fbfbc0c18",
+        "path": "CHANGELOG.md",
+        "command": null,
+        "mutating": false,
+        "fault": null,
+        "outcome": "ok",
+        "exit_code": null,
+        "duration_ms": 378,
+        "origin": null,
+        "error_code": null,
+        "interrupted": false
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 22608,
+    "output_tokens": 1151,
+    "cache_creation_input_tokens": 4419
+  },
+  "error": null,
+  "conversation_id": "c_1a09830392c87a8ed619688",
+  "user_id": "u_00000000-0000-4000-8000-000000000000",
+  "task_prompt": "Prepare release 0.2.0 of this package following the Releasing section in README.md: bump `__version__` in src/ratelimiter/version.py to 0.2.0 and add a `## [0.2.0] - 2026-09-12` section at the top of CHANGELOG.md (directly below the header, above 0.1.0) with one bullet: `- Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).` Tool calls can fail or be interrupted; an interrupted write may or may not have been applied, so verify the file's current contents before writing again. Run `python -m pytest -q` before you finish, then call submit with a one-paragraph summary.",
+  "steps": 8,
+  "summary": "Successfully prepared release 0.2.0 of the ratelimiter package. Updated src/ratelimiter/version.py to bump __version__ from \"0.1.0\" to \"0.2.0\", and added a new ## [0.2.0] - 2026-09-12 section at the top of CHANGELOG.md (directly below the header) with the single bullet point describing the fix: \"Fix allowed_burst off-by-one; burst is now floor(capacity * burst_multiplier).\" All 6 tests pass with `python -m pytest -q`. The changes follow the Releasing section in README.md exactly.",
+  "score": 100.0,
+  "error_class": null,
+  "interruptions": [
+    {
+      "step": 4,
+      "layer": "harness",
+      "code": "EHARNESS",
+      "label": "real: harness worker interrupted mid-call (outcome unknown)",
+      "tool_use_id": "toolu_01D1gyQSGgDbctbgj7hSbJe1",
+      "tool": "write_file",
+      "path": "CHANGELOG.md",
+      "outcome_known": false,
+      "planned": true,
+      "resumed": true,
+      "worker_generation": 2,
+      "at": "2026-09-13T00:35:34.121Z",
+      "detail": "the previous worker died with this call in flight; sandbox-env may or may not have applied it"
+    }
+  ],
+  "worker_generation": 2,
+  "harness_faults_fired": [
+    "worker_crash:write_file:CHANGELOG.md:1"
+  ]
+}

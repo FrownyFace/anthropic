@@ -51,6 +51,62 @@ JSON-lines logging), mounted into every image.
  Modal Sandbox      fixture repo at /workspace, python3 + pytest. Sees nothing else.
 ```
 
+### 2.1 Diagrams
+
+Component graph (who holds what; arrows are the only network paths) and the sequence that every
+fault scenario shares — the injected `ack_lost` and the real `worker-crash` diverge only at the
+highlighted step:
+
+```mermaid
+flowchart LR
+  subgraph B["Browser · apps/web (Modal Server, static)"]
+    UI["Transcript · verdict · workspace diff · replays"]
+  end
+  subgraph H["faultline-harness (Modal)"]
+    API["api (FastAPI, no secret)\nPOST /runs · GET /runs/{id} · SSE"]
+    ST["Store (SQLite on Volume)\nsingle writer"]
+    RE["run_episode\nONLY holder of ANTHROPIC_API_KEY\nmodel loop · resume on crash"]
+  end
+  subgraph G["faultline-sandbox-env (Modal)"]
+    GYM["gym REST\nreset · observe · evaluate · delete"]
+    MCP["MCP tools\nrun_command · read_file · write_file · list_dir"]
+    FP["fault plan · ledger · grader\n(never inside the sandbox)"]
+  end
+  SB["Modal Sandbox\n/workspace · no network"]
+  ANTH["Anthropic API\nclaude-haiku-4-5"]
+  UI -- "JSON + SSE (X-Faultline-User)" --> API
+  API -- spawn --> RE
+  API <--> ST
+  RE <--> ST
+  RE -- "messages.create" --> ANTH
+  RE -- "X-Faultline-Episode" --> MCP
+  RE -- "reset / observe / evaluate" --> GYM
+  MCP --> FP
+  GYM --> FP
+  FP -- "exec / files" --> SB
+```
+
+```mermaid
+sequenceDiagram
+  participant A as Agent (Haiku)
+  participant H as harness
+  participant E as sandbox-env
+  participant S as Sandbox
+  H->>E: POST /episodes (reset)
+  E->>S: create · upload fixture · apply sticky faults
+  A->>H: write_file CHANGELOG.md
+  H->>E: MCP write_file
+  E->>S: write (lands)
+  E-->>H: ETIMEDOUT (ack withheld, injected) / or the harness worker dies (worker-crash, real)
+  H-->>A: error, outcome unknown
+  A->>H: read_file CHANGELOG.md
+  H->>E: MCP read_file
+  E-->>A: one 0.2.0 section (write had landed)
+  A->>H: submit
+  H->>E: POST /episodes/{id}/evaluate (hidden tests + ledger checks)
+  E-->>H: score 100 · verified_before_rewrite ok
+```
+
 What each process can see:
 
 | Process | Provider key | Fault plan / grader | Workspace files | Persistent DB | Network |
@@ -289,16 +345,18 @@ routes `GET /episodes` and `POST /episodes/sweep` (`docs/sandbox-env-ops.md`); M
 
 Event types and payloads are defined in `faultline_common.schemas.Event` (`run.started`, `episode.reset`,
 `turn.thinking`, `turn.text`, `tool.call`, `tool.result`, `llm.call`, `fault.fired`, `workspace.diff`,
-`episode.evaluated`, `run.finished`, `log`; §5.4 adds `interruption`, `run.resumed` and `episode.sandbox`
-to the contract, not yet emitted). `Event.id` is the 0-based sequence within the run and doubles
+`episode.evaluated`, `run.finished`, `log`, `interruption`, `run.resumed`, `episode.sandbox`). `Event.id` is the 0-based sequence within the run and doubles
 as the SSE id, the `events.seq` primary key, and the resume cursor. Events are produced by exactly one
 writer per run (`run_episode`) and are never edited.
 
 ### 5.4 Reliability event contract (confirmed with the harness lead 2026-09-12 ~22:45 UTC)
 
-**Status (2026-09-12 19:40 EDT): contract only.** Every field below is defined in `schemas.py` and the
-docs, but no service emits it yet: sandbox-env still answers a lost sandbox with `EINTERNAL` and has no
-`/interruptions` route, and the harness has no crash/resume path. The lead is implementing it.
+**Status (2026-09-12 21:40 EDT): implemented and proven live** (`runs/20260913T002900Z_interruptions/`,
+65/65 twice): every field below is emitted; sandbox-env answers a lost sandbox with `ESANDBOX` and has
+`POST /episodes/{id}/interruptions`; the harness resumes a crashed worker (`worker-crash`). Still open
+(second review, unfinished at wrap-up): the interruption route and `GET /episodes` are not token-scoped,
+so a forged report can alter a grade; the crash trigger has no landing barrier; stale `running` runs are
+not finalised; historical runs are imported but not reclassified.
 
 Canonical: `packages/common/faultline_common/schemas.py` (the `Event` docstring lists every data
 shape), labels in `docs/error-taxonomy.md`, injector behaviour in `services/sandbox-env/FAULTS.md`.
@@ -356,8 +414,8 @@ Built into `dist/` (in the Modal image, or prebuilt via `FAULTLINE_WEB_PREBUILT`
 Server running `serve.py`: SPA fallback for extension-less paths, `no-store` on `index.html` and
 `config.json`, immutable `/assets/`, unified JSON request logs. `serve.py` writes `/config.json` from
 `$HARNESS_URL` at container start; the SPA resolves the harness URL as injected
-`window.__FAULTLINE_CONFIG__` → `/config.json` → `VITE_HARNESS_URL` → default, so the URL can change
-without a rebuild.
+`window.__FAULTLINE_CONFIG__` → `/config.json` → `VITE_HARNESS_URL` → empty (the UI then says "harness URL
+not configured"; replays still work), so the URL can change without a rebuild.
 
 ### 7.2 Beautiful UI: what it is and how it is integrated
 
@@ -389,6 +447,10 @@ variables (`--foreground`, `--muted-foreground`, `--background`, `--card`, `--bo
 `--primary`, `--primary-foreground`), so both libraries follow the same light/dark palette (exact block
 in `PLAN.md` §2.10.2).
 
+The light/dark palette in `apps/web/src/index.css` copies the 31 matching color tokens per mode
+from `~/try-redo/client/app/globals.css`, wrapping its HSL channels in `hsl(...)` and mapping
+`--sidebar-background` to `--sidebar`. Both component libraries inherit the colors through this bridge.
+
 ### 7.3 Layout, routes, state
 
 ```
@@ -396,8 +458,8 @@ in `PLAN.md` §2.10.2).
 │app-sidebar   │top bar: breadcrumb · status chips        │Workspace (resizable) │
 │ + New run    │         step n/max · tokens · elapsed    │ Files (FileStatus…)  │
 │ conversations│──────────────────────────────────────────│ Diffs (CodeBlock)    │
-│  · lost-ack  │[user] task prompt                        │ Timeline             │
-│  · locked…   │[assistant] AssistantText                 │ Logs (virtualized)   │
+│  · lost-ack  │[user] task prompt                        │ Logs (virtualized)   │
+│  · locked…   │[assistant] AssistantText                 │                      │
 │ replays      │   ThinkingTrace ▸ ToolCallChips          │                      │
 │  · gauntlet  │     (CodeBlock) · fault badge            │                      │
 │              │[assistant] summary + ScoreRows           │                      │
@@ -414,8 +476,9 @@ in `PLAN.md` §2.10.2).
   and a line in the identity menu, not a card.
 - Routes (path based, `src/lib/router.ts`, no router dependency): `/` = the landing page;
   `/conversations/:id` = a persisted transcript, `?run=<run_id>` focuses one run (live tail if
-  unfinished); `/runs/:id` = a run outside a conversation; `/replay/:demoId` = a bundled recorded run
-  with a scrubber. `serve.py` answers extension-less paths with `index.html`, so deep links survive a
+  unfinished); `/runs/:id` = loads a run and redirects to its conversation ("Run not found" on a 404, e.g. a run of
+  another browser identity); `/replay/:demoId` = a bundled recorded run with a top-bar scrubber and a
+  plain-English story bar (`src/lib/story.ts`). `serve.py` answers extension-less paths with `index.html`, so deep links survive a
   refresh.
 - One pure reducer (`src/lib/reducer.ts`, already present) builds the view model for live SSE, for
   `GET /runs/{id}` restore, and for replay of `public/demo/*.json`. Persisted transcripts from
@@ -458,10 +521,10 @@ changes its map entry and its test in the same commit.
 | Deploy order | sandbox-env → harness (creates Volume `faultline-db` on first deploy) → web. Live URLs (2026-09-12): harness `https://appliedlabsai-local--faultline-harness-api.modal.run`, sandbox-env `https://appliedlabsai-local--faultline-sandbox-env-api.modal.run`, web `https://appliedlabsai-local--faultline-web-site.us-east.modal.direct` |
 | Secret | `anthropic-secret` (`ANTHROPIC_API_KEY`, optional `ANTHROPIC_WORKSPACE`; name overridable via `FAULTLINE_ANTHROPIC_SECRET`), attached only to `run_episode` |
 | Volume | `faultline-db` (v1), mounted at `/data` on `Store` only |
-| Env | `ANTHROPIC_MODEL` (default `claude-haiku-4-5`), `SANDBOX_ENV_URL`, `HARNESS_URL`, `LOG_LEVEL`, `MODAL_ENVIRONMENT`, `FAULTLINE_ANTHROPIC_SECRET`, `HARNESS_HAIKU_THINKING` (opt-in), `FAULTLINE_WEB_PREBUILT` (see `.env.example`) |
+| Env | `ANTHROPIC_MODEL` (default `claude-haiku-4-5`), `SANDBOX_ENV_URL`, `HARNESS_URL`, `LOG_LEVEL`, `MODAL_ENVIRONMENT`, `FAULTLINE_ANTHROPIC_SECRET`, `HARNESS_HAIKU_THINKING` (opt-in), `FAULTLINE_WEB_PREBUILT` (see `.env.example`); web dev: `VITE_HARNESS_URL` in `apps/web/.env.development.local` |
 | Warm containers | web Server, harness `api`, harness `Store` (`min_containers=1`) |
-| Web image | Node 22 + pnpm; `pnpm i --frozen-lockfile && pnpm build`; `config.json` written from `HARNESS_URL` at container start |
-| Sandbox guardrails | `timeout=1800`, `idle_timeout=600`, `block_network=True`, delete in `finally`, `reap` helper |
+| Web image | prebuilt `apps/web/dist/` copied in when present (the default; `FAULTLINE_WEB_PREBUILT` overrides), else Node 22 + `pnpm i --frozen-lockfile && pnpm build` in the image; `serve.py` writes `config.json` from `HARNESS_URL` at container start |
+| Sandbox guardrails | `timeout=1800`, `idle_timeout=600`, `block_network=True`, delete in `finally`, `reap` helper (protects active episodes by default) |
 | Export | `modal run … ::checkpoint_now` then `modal volume get faultline-db faultline.sqlite3 runs/` |
 
 ## 9. Decision log
@@ -478,14 +541,15 @@ changes its map entry and its test in the same commit.
 | 8 | `events` as source of truth + `messages`/`blocks`/`llm_calls` projections | events only; projections only | replay/SSE need the log; the UI and "what did the model see" need the message shape; projections are a cheap same-transaction write and a listed scope cut |
 | 9 | Identity via `X-Faultline-User` header, minted in the browser, mirrored to a cookie | cookie-only; server-minted id | the API is cross-origin so cookies never reach it; localStorage is the reliable store; the cookie is a backup |
 | 10 | Beautiful UI by copy-paste with lucide/shadcn substitutions | Vercel AI Elements (a real registry); shadcn only | matches the requested look; MIT; the private deps are small and swappable; scope cut #4 if it drags |
-| 11 | Haiku 4.5 default, Sonnet/Opus 5 allowlisted | Sonnet default | cost and latency for a demo; the ack-lost scenario is more interesting when a cheaper model sometimes fails it |
+| 11 | Haiku 4.5 only — the harness rejects any other model with 400 (user decision, 21:30 EDT) | a model picker; Sonnet default | cost and latency for a demo; a small model recovering well under forced verification is the interesting result |
 | 12 | Path routes through a small in-house router (`src/lib/router.ts`: `pushState` + `useSyncExternalStore`) | `react-router-dom`; query params only (the scaffold's first design) | four screens with deep links that survive a refresh (`serve.py` SPA fallback); no dependency in a static SPA |
 | 13 | Node 22 pinned (`.nvmrc`, `engines`, Modal image) | stay on the machine default 21.6 | Vite 8 and vitest 5 refuse to start on 21.6 (`styleText` missing from `node:util`) |
 
 ## 10. Open questions
 
-- Should the composer allow editing the task prompt, or only choosing a scenario? Current answer: editable,
-  stored in `runs.task_prompt`, because it makes the "conversation" framing honest. Revisit if it invites
+- Should the composer allow editing the task prompt, or only choosing a scenario? Current answer: editable in
+  the UI and sent to the API — but as of 20:55 EDT the harness still prefers the scenario prompt and
+  overwrites `runs.task_prompt` (review bug B1, with the lead). Intended: because it makes the "conversation" framing honest. Revisit if it invites
   prompt-injection-shaped demos that distract from the reliability story.
 - Do we need per-user rate limiting beyond `POST …/runs`? Probably not for review traffic.
 - Checkpoint cadence (15 s) vs. cost of `VACUUM INTO` as the DB grows — measure once real runs exist and

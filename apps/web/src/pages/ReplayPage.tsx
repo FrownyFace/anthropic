@@ -49,7 +49,7 @@ export function ReplayPage({ harness, demoId }: { harness: HarnessState; demoId:
   return (
     <div className="flex h-dvh min-h-0 flex-col">
       <TopBar
-        crumbs={[{ label: 'Replays', route: { kind: 'home' } }, { label: meta?.label ?? demoId }]}
+        crumbs={[{ label: 'Recorded runs', route: { kind: 'home' } }, { label: meta?.label ?? demoId }]}
         onToggleWorkspace={() => setWorkspaceOpen((v) => !v)}
         workspaceOpen={workspaceOpen}
       >

@@ -24,7 +24,7 @@ from harness.classify import (
     normalize_fault,
 )
 from harness.interrupts import HarnessFaultPlan, align_ledger, has_progress, plan_resume
-from harness.loop import run_episode_sync
+from harness.loop import pick_fault, run_episode_sync
 from harness.prompts import build_task_message
 from harness.store import RunStore, memory_store
 from tests.fakes import (
@@ -213,6 +213,20 @@ def test_ledger_side_effect_truth_table() -> None:
     assert ledger_side_effect({"outcome": "error"}) is False
     assert ledger_side_effect({"outcome": "ok", "interrupted": True}) is True
     assert ledger_side_effect({"outcome": "error", "interrupted": True}) is False
+    # An ack_lost row that was ALSO interrupted still applied the write (FAULTS.md): reporting it
+    # as "nothing happened" would be exactly the lie the ledger echo exists to prevent.
+    assert ledger_side_effect({"outcome": "ack_lost", "interrupted": True}) is True
+    assert ledger_side_effect({"outcome": "short_circuit", "interrupted": True}) is False
+
+
+def test_pick_fault_never_lets_a_stale_row_explain_a_different_failure() -> None:
+    missing = {"kind": "missing_file", "path": "README.md", "mode": "transient"}
+    denied = {"kind": "denied_write", "path": "src/limits.py", "mode": "transient"}
+    assert pick_fault([missing, denied], "EACCES") is denied      # matched by kind, not by order
+    assert pick_fault([missing], "EACCES") is None                # a stale row explains nothing
+    assert pick_fault([missing], "EINVAL") is None                # no fault produces EINVAL
+    assert pick_fault([missing], None) is missing                 # a shell exit 1 carries no code
+    assert pick_fault([], "ENOENT") is None
 
 
 # ============================================================================= tool results in a run
@@ -258,6 +272,41 @@ def test_a_sticky_missing_file_is_labelled_staged_not_simulated() -> None:
     fired = events_of(record, "fault.fired")[0]["data"]
     assert (fired["origin"], fired["layer"]) == ("staged", "filesystem")
     assert fired["description"]
+
+
+def test_an_injected_fault_through_the_shell_lands_on_the_call_that_caused_it() -> None:
+    """`cat README.md` short-circuited by missing_file is a NORMAL result with exit 1 (FAULTS.md).
+
+    It is not `is_error` and it is not mutating, so the harness used to skip observe() for it and
+    only noticed the gym's ledger entry at the NEXT observe — which pinned the fault badge on an
+    innocent later call.
+    """
+    gym = FakeGym()
+
+    def handler(name: str, args: dict[str, Any]):
+        if name == "run_command":
+            gym.faults_fired.append({"step": 1, "kind": "missing_file", "path": "README.md",
+                                     "mode": "transient"})
+            return ok_result({"stdout": "", "stderr": "cat: README.md: No such file or directory\n",
+                              "exit_code": 1, "duration_ms": 4})
+        return ok_result({"path": args.get("path"), "bytes_written": 3, "sha256": "d" * 64})
+
+    client = FakeAnthropic([
+        response(tool_use("tu_1", "run_command", command="cat README.md")),
+        response(tool_use("tu_2", "write_file", path="config/settings.json", content="{}")),
+        response(tool_use("tu_3", "submit", summary="recreated the config")),
+    ])
+    record = run(client, FakeMCP(handler), gym)
+
+    shell, write = events_of(record, "tool.result")[0]["data"], events_of(record, "tool.result")[1]["data"]
+    assert shell["is_error"] is False                      # a shell exiting 1 is not a tool error
+    assert shell["outcome"] == "not_executed"              # …but nothing actually ran
+    assert "error_class" not in shell                      # error_class is for is_error results only
+    assert shell["fault"]["kind"] == "missing_file"
+    assert "fault" not in write                            # the later, innocent call stays clean
+
+    fired = events_of(record, "fault.fired")
+    assert len(fired) == 1 and fired[0]["step"] == 1       # attributed to the call that caused it
 
 
 def test_only_a_failed_connect_is_retried_and_attempts_counts_it() -> None:
@@ -572,6 +621,50 @@ def test_transport_abort_cancels_the_call_and_reports_etransport_unknown() -> No
     assert aborted["error_class"]["outcome_known"] is False
     assert record["status"] == "ok"                  # no crash: the run continues and is graded
 
+    # It is a REAL interruption, so it is on the record and the gym is told: the ledger row must be
+    # marked `interrupted` or `verified_before_rewrite` can never apply to it (FAULTS.md/GRADING.md).
+    intr = events_of(record, "interruption")[0]["data"]
+    assert (intr["layer"], intr["code"], intr["planned"]) == ("transport", "ETRANSPORT", True)
+    assert (intr["tool"], intr["path"], intr["tool_use_id"]) == ("write_file", "CHANGELOG.md", "tu_1")
+    assert intr["outcome_known"] is False and intr["resumed"] is False
+    assert gym.interruptions == [{"episode_id": "ep_test", "tool": "write_file",
+                                  "path": "CHANGELOG.md", "layer": "transport",
+                                  "code": "ETRANSPORT", "at": intr["at"]}]
+    assert len(record["interruptions"]) == 1
+    # Reported after the loop and BEFORE grading: the call we stopped listening to is often still
+    # being served, and sandbox-env read-modify-writes one modal.Dict record per episode — a report
+    # sent mid-flight raced the in-flight call's own ledger row (observed live on r_80d6deed5a0b).
+    assert gym.calls.index("report_interruption") == gym.calls.index("evaluate") - 1
+
+
+def test_a_lost_read_is_an_interruption_but_is_not_reported_to_the_gym() -> None:
+    """Nothing could have changed, so there is nothing for the grader to require a verification of."""
+    gym = FakeGym()
+    client = FakeAnthropic([
+        response(tool_use("tu_1", "read_file", path="CHANGELOG.md")),
+        response(tool_use("tu_2", "submit", summary="done")),
+    ])
+    record = run(client, FakeMCP(lambda n, a: transport_result("protocol")), gym)
+
+    intr = events_of(record, "interruption")[0]["data"]
+    assert (intr["layer"], intr["tool"], intr["outcome_known"]) == ("transport", "read_file", False)
+    assert gym.interruptions == []          # a read has no side effect to mark `interrupted`
+
+
+def test_a_failed_connect_is_never_reported_as_an_interruption() -> None:
+    """A request that never left this worker must not mark some OTHER row `interrupted`."""
+    gym = FakeGym()
+    client = FakeAnthropic([
+        response(tool_use("tu_1", "write_file", path="CHANGELOG.md", content="x")),
+        response(tool_use("tu_2", "submit", summary="gave up on the write")),
+    ])
+    record = run(client, FakeMCP(lambda n, a: transport_result("connect")), gym)
+
+    assert events_of(record, "tool.result")[0]["data"]["attempts"] == config.TOOL_MAX_ATTEMPTS
+    assert gym.interruptions == []
+    assert events_of(record, "interruption") == []
+    assert record["interruptions"] == []
+
 
 def test_the_fallback_only_applies_when_the_gym_published_nothing() -> None:
     assert config.harness_faults_for("worker-crash")[0]["kind"] == "worker_crash"
@@ -721,6 +814,55 @@ def test_a_fresh_worker_resumes_the_run_and_finishes_it() -> None:
     # step numbering continues where the dead worker stopped (it died during step 2)
     assert [e["step"] for e in events_of(record, "tool.call")] == [1, 2, 3, 4]
     assert record["steps"] == 4
+
+
+def crashed_parallel_turn_snapshot() -> dict[str, Any]:
+    """A turn with TWO tool calls where the worker dies on the second one."""
+    gym = FakeGym(scenario=crash_scenario(WORKER_CRASH))
+    store = RunStore(memory_store())
+    snapshot: dict[str, Any] = {}
+
+    def handler(name: str, args: dict[str, Any]):
+        if name == "read_file":
+            return ok_result({"path": args.get("path"), "content": "# Changelog\n", "size": 12,
+                              "sha256": "a" * 64})
+        return ok_result({"path": args.get("path"), "bytes_written": 40, "sha256": "b" * 64})
+
+    def crash(code: int) -> None:
+        snapshot.update(copy.deepcopy(store.get("r_parallel") or {}))
+        raise WorkerDied()
+
+    client = FakeAnthropic([
+        response(tool_use("tu_1", "read_file", path="CHANGELOG.md"),
+                 tool_use("tu_2", "write_file", path="CHANGELOG.md", content="## [0.2.0]")),
+    ])
+    with pytest.raises(WorkerDied):
+        run(client, FakeMCP(handler), gym, store=store, run_id="r_parallel", crash=crash,
+            scenario_id="worker-crash")
+    return snapshot
+
+
+def test_resume_keeps_every_tool_result_of_one_turn_in_one_user_message() -> None:
+    """Split them across two user messages and the API rejects the whole conversation with a 400
+    ("tool_use ids were found without tool_result blocks immediately after"), so the resume the
+    worker-crash scenario exists to demonstrate would die on its first model call."""
+    snapshot = crashed_parallel_turn_snapshot()
+    assert [e["data"].get("tool_use_id") for e in snapshot["events"]
+            if e["type"] == "tool.call"] == ["tu_1", "tu_2"]
+
+    store = store_from(snapshot)
+    gym = FakeGym(scenario=crash_scenario(WORKER_CRASH))
+    client = FakeAnthropic([response(tool_use("tu_3", "submit", summary="verified"))])
+    record = run(client, FakeMCP(), gym, store=store, run_id="r_parallel",
+                 crash=lambda code: None, scenario_id="worker-crash")
+
+    sent = client.calls[0]["messages"]
+    assert [m["role"] for m in sent] == ["user", "assistant", "user"]
+    assert [b["id"] for b in sent[1]["content"] if b["type"] == "tool_use"] == ["tu_1", "tu_2"]
+    # every tool_use of that assistant turn answered, in the SINGLE message that follows it
+    assert [b["tool_use_id"] for b in sent[2]["content"]] == ["tu_1", "tu_2"]
+    assert sent[2]["content"][1]["is_error"] is True
+    assert record["status"] == "ok"
 
 
 def test_resuming_into_a_dead_episode_ends_the_run_interrupted() -> None:

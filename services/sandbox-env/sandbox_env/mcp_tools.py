@@ -119,7 +119,18 @@ class _Step:
                 )
             )
         if self.ep.get("terminated"):
-            _fail(ToolError(error=f"episode {episode_id} has been terminated", code="EINVAL"))
+            # The sandbox really is gone (DELETE /episodes/{id}, a TTL sweep, or a reset that
+            # abandoned it). That is a real sandbox loss, not a bad argument: EINVAL would tell the
+            # harness "your call was malformed" and let the model keep stepping into a corpse.
+            # ESANDBOX is the taxonomy's answer (docs/error-taxonomy.md, FAULTS.md "Real failures"),
+            # and it is what ends the run `interrupted` instead of `ok`.
+            _fail(
+                ToolError(
+                    error=f"{tool}: sandbox unavailable",
+                    code="ESANDBOX",
+                    detail=f"episode {episode_id} was terminated; its sandbox no longer exists",
+                )
+            )
 
         self.ep["step"] = int(self.ep.get("step", 0)) + 1
         self.step = self.ep["step"]

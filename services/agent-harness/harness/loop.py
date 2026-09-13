@@ -128,6 +128,25 @@ def new_faults(observed: list[dict[str, Any]], seen: list[dict[str, Any]]) -> li
     ]
 
 
+def pick_fault(fired: list[dict[str, Any]], error_code: str | None) -> dict[str, Any] | None:
+    """The fired fault that explains THIS call (all of `fired` is still emitted as fault.fired).
+
+    A delta can carry more than one row — the gym records a fault for every call it intercepts,
+    including ones the harness does not observe immediately — so taking `fired[0]` blindly lets a
+    stale row relabel an unrelated failure (an EACCES reported as a missing file). Only a row whose
+    kind matches the code the agent actually got may explain an error; a result that is not an error
+    (a shell short-circuited into `exit 1`) carries no code, and the newest row is the explanation.
+    """
+    if not fired:
+        return None
+    if not error_code:
+        return fired[0]
+    want = CODE_TO_KIND.get(error_code)
+    if not want:
+        return None  # no injected fault produces EINVAL/ESANDBOX/…; do not invent one
+    return next((f for f in fired if f.get("kind") == want), None)
+
+
 def inferred_fault(step: int, error_code: str | None, args: dict[str, Any] | None) -> dict[str, Any] | None:
     """Fallback used only when observe() is unavailable; ground truth is the ledger delta."""
     kind = CODE_TO_KIND.get(error_code or "")
@@ -405,9 +424,20 @@ def run_episode_sync(
         sink.update(interruptions=interruptions, worker_generation=worker_generation)
         return intr
 
-    def report_interruption(record_: dict[str, Any], tool: str | None, path: str | None) -> bool:
-        """Tell the gym the harness never saw this call's response (GRADING.md / schemas)."""
-        if not episode_id or tool not in TOOL_NAMES:
+    #: (interruption, tool, path) for calls whose answer we lost while the request was still being
+    #: served. Reported to the gym at the END of the loop — see `flush_interruption_reports`.
+    deferred_reports: list[tuple[dict[str, Any], str, str | None]] = []
+
+    def report_interruption(record_: dict[str, Any], tool: str | None, path: str | None,
+                            *, mutating: bool) -> bool:
+        """Tell the gym the harness never saw this call's response (GRADING.md / schemas).
+
+        Only for a call that could have CHANGED something. The gym marks the most recent matching
+        `ok`/`ack_lost` row `interrupted`, and `verified_before_rewrite` then treats that row like
+        an `ack_lost` — so reporting a lost *read* would invent a verification obligation out of a
+        call that had no side effect to verify.
+        """
+        if not episode_id or tool not in TOOL_NAMES or not mutating:
             return False
         try:
             gym.report_interruption(
@@ -420,6 +450,21 @@ def run_episode_sync(
             sink.warn("gym.interruption_report_failed", f"{type(exc).__name__}: {exc}",
                       episode_id=episode_id, tool=tool, path=path)
             return False
+
+    def flush_interruption_reports() -> None:
+        """Tell the gym about the calls we lost — once the loop is over, never mid-flight.
+
+        The request we stopped listening to is usually STILL being served (an `ack_lost` holds it
+        for `delay_ms`), and sandbox-env keeps its episode in a modal.Dict that every writer
+        read-modify-writes. Posting an interruption while that call is in flight is a second writer
+        on the same record: one of the two ledger rows loses. Observed live on run r_80d6deed5a0b —
+        the annotation row the gym appended was overwritten by the in-flight write's own row. By the
+        end of the loop the call has certainly landed, and `evaluate` (which reads the ledger and
+        grades `verified_before_rewrite` off it) has not run yet.
+        """
+        for intr, tool_, path_ in deferred_reports:
+            report_interruption(intr, tool_, path_, mutating=True)
+        deferred_reports.clear()
 
     def dispatch(name: str, args: dict[str, Any], *, abort_after_ms: int | None = None) -> ToolCallResult:
         """One MCP call, with the ONLY harness-level retry we allow: a failed connect.
@@ -685,7 +730,10 @@ def run_episode_sync(
                                "sandbox-env may or may not have applied it",
                     )
                     note_interruption(intr, step=dangling.get("step"))
-                    reported = report_interruption(intr, tool, dangling.get("path"))
+                    reported = report_interruption(
+                        intr, tool, dangling.get("path"),
+                        mutating=is_mutating(tool, dangling.get("input") or {}),
+                    )
                     data = harness_result_data(
                         str(dangling.get("tool_use_id") or ""), tool, dangling.get("path"),
                         sandbox=sandbox_state(),
@@ -699,7 +747,29 @@ def run_episode_sync(
                         "is_error": True,
                     })
                 if pending:
-                    messages.append({"role": "user", "content": pending})
+                    # EVERY tool_result for one assistant turn must travel in ONE user message.
+                    # If the dying worker had already recorded results for other calls in that same
+                    # turn, plan_resume put them in a trailing user message; appending a second one
+                    # makes the API reject the whole conversation ("tool_use ids were found without
+                    # tool_result blocks immediately after"), which would fail the resume this
+                    # scenario exists to exercise.
+                    dangling_ids = {str(d.get("tool_use_id") or "") for d in resume.dangling}
+                    tail = messages[-1] if messages else None
+                    prev = messages[-2] if len(messages) > 1 else None
+                    same_turn = (
+                        isinstance(tail, dict) and tail.get("role") == "user"
+                        and isinstance(tail.get("content"), list)
+                        and all(isinstance(b, dict) and b.get("type") == "tool_result"
+                                for b in tail["content"])
+                        and isinstance(prev, dict) and prev.get("role") == "assistant"
+                        and any(isinstance(b, dict) and b.get("type") == "tool_use"
+                                and str(b.get("id")) in dangling_ids
+                                for b in (prev.get("content") or []))
+                    )
+                    if same_turn:
+                        tail["content"].extend(pending)
+                    else:
+                        messages.append({"role": "user", "content": pending})
 
         # ------------------------------------------------------------- tools
         if status != "interrupted":
@@ -807,10 +877,17 @@ def run_episode_sync(
                     text, is_error, dur_ms, code = res.text, res.is_error, res.duration_ms, res.error_code
                     attempts_n = res.attempts
 
-                    obs = observe() if (mutating or is_error) else None
+                    # Observe after anything that can carry a fault: a mutation, a tool error, and
+                    # a non-zero exit — because an injected fault short-circuits `run_command` into
+                    # a NORMAL result with exit 1 (FAULTS.md). Skipping that third case left the
+                    # gym's ledger entry unseen until some later observe, which then attached the
+                    # fault to an innocent call.
+                    exit_code = (res.structured or {}).get("exit_code")
+                    failed_shell = isinstance(exit_code, int) and exit_code != 0
+                    obs = observe() if (mutating or is_error or failed_shell) else None
                     raw_fired = new_faults(list((obs or {}).get("faults_fired") or []), seen_faults) if obs else []
                     fired = [f for f in (normalize_fault(f, step=step) for f in raw_fired) if f]
-                    fault = fired[0] if fired else (
+                    fault = pick_fault(fired, code) or (
                         normalize_fault(inferred_fault(step, code, args), step=step)
                         if (is_error and obs is None) else None
                     )
@@ -858,6 +935,29 @@ def run_episode_sync(
                         "is_error": bool(is_error),
                     }
                 )
+
+                if res is not None and outcome == "unknown" and res.transport_kind in (
+                        "timeout", "abort", "protocol"):
+                    # OUR side lost the answer to a call that had already been sent. That is a real
+                    # interruption, not just an error: the gym must mark the ledger row
+                    # `interrupted` so `verified_before_rewrite` applies to it exactly as it does to
+                    # `ack_lost` (FAULTS.md "harness faults", GRADING.md "Matching an interruption
+                    # report"), and RunRecord.interruptions must list it.
+                    # A failed *connect* is deliberately excluded: that request provably never left
+                    # this worker, so reporting it would mark some OTHER, already-acknowledged row.
+                    path_ = primary_path(name, args)
+                    intr = interruption(
+                        layer="transport", code=(ec or {}).get("code") or "ETRANSPORT", step=step,
+                        tool_use_id=tuid, tool=name if name in TOOL_NAMES else None, path=path_,
+                        outcome_known=False,
+                        planned=bool(trigger and trigger.get("kind") == "transport_abort"),
+                        resumed=False, worker_generation=worker_generation, at=now_iso(),
+                        detail="the harness never received this call's response; sandbox-env may "
+                               "have applied it",
+                    )
+                    note_interruption(intr, step=step)
+                    if mutating:
+                        deferred_reports.append((intr, name, path_))
 
                 if res is not None and res.transport_kind == "abort" and hasattr(mcp, "reconnect"):
                     # A cancelled streamable-HTTP request can poison the session; rebuild it rather
@@ -917,6 +1017,9 @@ def run_episode_sync(
         sink.step = None
         ctx_step.set(None)
         # ------------------------------------------------------------- evaluate
+        # Ledger annotations first: the grader reads the ledger, so an interruption reported after
+        # `evaluate` would never be scored (GRADING.md `verified_before_rewrite`).
+        flush_interruption_reports()
         evaluation_status = "skipped"
         evaluation_error: str | None = None
         if status == "interrupted":

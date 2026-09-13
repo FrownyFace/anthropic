@@ -22,7 +22,7 @@ DEFAULT_HARNESS_URL = "https://appliedlabsai-local--faultline-harness-api.modal.
 DEFAULT_SECRET_NAME = "anthropic-secret"
 
 # Per PLAN.md §2.3 / schemas.MODEL_ALLOWLIST.
-MODEL_ALLOWLIST = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"]
+MODEL_ALLOWLIST = ["claude-haiku-4-5"]  # user decision 2026-09-12: Haiku only
 DEFAULT_MODEL = "claude-haiku-4-5"
 # Sonnet 5 / Opus 5 get adaptive thinking; Haiku 4.5 sends no `thinking` param by default.
 NO_THINKING_MODELS = {"claude-haiku-4-5"}

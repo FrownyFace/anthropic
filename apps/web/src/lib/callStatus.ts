@@ -46,6 +46,25 @@ export function effectiveOutcome(
       return 'not_executed'
     }
   }
+  // The persisted projection (schemas.Block) carries no outcome / error_class, so the ToolError
+  // body's `code` is the only structured signal left. The real-failure codes are never injected
+  // (docs/error-taxonomy.md) and ETIMEDOUT is "the response never arrived" whoever caused it, so
+  // these are safe to read; ENOENT / EACCES are ambiguous (injected or real) and fall through.
+  if (result.isError) {
+    switch (result.errorCode) {
+      case 'ETIMEDOUT':
+      case 'ETRANSPORT':
+      case 'EHARNESS':
+        return 'unknown'
+      case 'ESANDBOX':
+      case 'EINVAL':
+      case 'EINTERNAL':
+      case 'ENOEPISODE':
+        return 'not_executed'
+      default:
+        return null
+    }
+  }
   return null
 }
 

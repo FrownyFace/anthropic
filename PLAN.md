@@ -25,10 +25,10 @@ decision changes, edit the decision, don't append a new one.
 | sandbox-env (gym + MCP) | ✅ core | deployed at `https://appliedlabsai-local--faultline-sandbox-env-api.modal.run`; 225 tests green (re-run 19:25 EDT); **`scripts/smoke_roundtrip.py` PASS 23/23 + fault-proof 29/29 (real Modal Sandbox shell via MCP, evidence `runs/20260912T220413Z_smoke*`)**; V3 fault proofs for all three kinds in `runs/20260912T220451Z_faults/` (lost-ack careful = 100, careless blind re-append = 8). Reset p50 ≈3.1–3.3 s (`runs/20260912T230531Z_perf`, `runs/20260912T230704Z_perf`; early builder figure was 1.5–2 s), tool call 0.15–0.7 s, evaluate ≈1.1 s |
 | agent-harness (model loop) | ✅ core | deployed at `https://appliedlabsai-local--faultline-harness-api.modal.run` (153 tests green at 19:25 EDT, `/health` has_provider_key=false, key seen only in `run_episode`). **First live episode 17:59 EDT: `lost-ack` run `r_e9bc5c8c6739` scored 100/100** (ack_lost fired step 4 → agent re-read → no duplicate → 8/8 tests; 53.6 s; evidence `runs/20260912T215923Z_lost-ack_live/`). Persistence = SQLite `Store` (§2.9, next row) |
 | harness `Store` (SQLite on Modal Volume) | ✅ | live since ~19:00 EDT: `/me`, `/conversations*`, `POST /conversations/{id}/runs` answer 200; snapshot restored after a harness redeploy; the 21 Modal-Dict runs were imported once. Evidence `runs/20260912T230110Z_store/`, notes `docs/store-notes.md`; design `ARCHITECTURE.md` §4 |
-| Error classification + `worker-crash` (§2.11) | 🟡 | **contract only** (`schemas.py`, `docs/error-taxonomy.md`, `services/sandbox-env/FAULTS.md`, `GRADING.md`). As of 19:25 EDT no service emits `error_class` / `outcome` / `attempts` / `sandbox` / `interruption` / `run.resumed` / `episode.sandbox`; the gym has no `/interruptions` route; the harness has no crash/resume path. `worker-crash.json` is in the gym catalogue with an empty fault plan (a perfect run caps at 84 until the harness crash exists). Lead implementing |
-| apps/web (Vite + shadcn + Beautiful UI on Modal Server) | ✅ | **Redeployed ~23:25 UTC** → `https://appliedlabsai-local--faultline-web-site.us-east.modal.direct` (184 tests, tsc clean). Sidebar block + conversation rail + identity (**verified live against the Store**: conversation created from the UI, persisted transcript restored after reload, other identities 404), ChatGPT-style landing with a six-column scenario data table, replays for all four injected-fault scenarios (real captures), Beautiful UI transcript, **resizable workspace**, **virtualized logs**. Evidence `runs/20260912T225240Z_web/`. Pending: taxonomy fields render once the backend emits them; `worker-crash` replay |
+| Error classification + `worker-crash` (§2.11) | ✅ core / 🟡 hardening | **Proven live** (`runs/20260913T002900Z_interruptions` + `…T003600Z` repeat, 65/65): `error_class`/`outcome` on every tool result, `fault.fired` provenance, statuses `unevaluated`/`interrupted`, `interruption`/`run.resumed`/`episode.sandbox`, `ESANDBOX`; worker-crash `r_2991dd9a680a`/`r_1b83648dc693` resumed on worker 2 and scored 100; sandbox-loss ends `interrupted`. **Not finished (Review2 stopped at wrap-up 21:35 EDT)**: N1 per-episode control token / owner scoping, N5 stale-run finalisation, N7 landing barrier, Store B6–B9 + consistency window, backfill of `r_ccda8780cbee`, two-container log evidence, dead code — all listed in `runs/20260912T232850Z_cleanup-review/REVIEW2.md` |
+| apps/web (Vite + shadcn + Beautiful UI on Modal Server) | ✅ | **Redeployed ~23:25 UTC** → `https://appliedlabsai-local--faultline-web-site.us-east.modal.direct` (187 tests / 21 files, tsc and build clean as of faultline-web v20, ~20:20 EDT, reported by anthropic-4c). Sidebar block + conversation rail + identity (**verified live against the Store**: conversation created from the UI, persisted transcript restored after reload, other identities 404), ChatGPT-style landing with a six-column scenario data table, replays for all four injected-fault scenarios (real captures), Beautiful UI transcript, **resizable workspace**, **virtualized logs**. Evidence `runs/20260912T225240Z_web/`. Pending: taxonomy fields render once the backend emits them; `worker-crash` replay |
 | Deployed + smoke evidence in `runs/` | 🟡 | V1 ✅ V2 ✅ V3 ✅ V4 ✅ (all 4 scenarios live on Haiku = 100; weak run = 8) V5 🟡 (web deployed at `https://appliedlabsai-local--faultline-web-site.us-east.modal.direct` by the other session; browser e2e pending taxonomy) V6 ✅ V7 🟡 V8 ⬜. **Verification skill `.claude/skills/verify-faultline` executed 18:15 EDT: 65/65 assertions PASS across doctor/careful/careless/faults/live/cleanup/survival, evidence `runs/20260912T221506Z_verify/` (71 files, hashed after cleanup)** |
-| Submission artefacts | ⬜ | |
+| Submission artefacts | 🟡 | repo pushed, README/RATIONALE/ARCHITECTURE/PLAN finalised 21:45 EDT, all three apps redeployed; **open for the candidate**: record the video (`docs/VIDEO_SCRIPT.md`), export the Claude Code transcripts (this + parallel sessions), send the email |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ done · ❌ cut
 
@@ -96,6 +96,9 @@ Trust boundary summary (what each process can see):
 Why three deployables: the harness must be replaceable (different model/prompt) without touching
 the environment; the environment must be gradeable without trusting the agent; the UI is static.
 
+
+Diagrams (component graph + the lost-ack / worker-crash sequence): `ARCHITECTURE.md` §2.1.
+
 ### 2.2 Gym contract (sandbox-env)
 
 Gymnasium-style, but the *step* surface is MCP tools (so any MCP-speaking harness can play).
@@ -125,13 +128,13 @@ MCP (streamable HTTP, stateless) at `/mcp`; episode selected by header `X-Faultl
 Every tool result is capped (`stdout`/`stderr` 8,000 characters each, `content` 32,000 characters; `STDIO_CAP`/`CONTENT_CAP` in `schemas.py`) and marked `truncated`.
 Every call is appended to the **ledger**: `{step, tool, args_digest, fault?:{kind,path,mode}, outcome, ts, duration_ms}`.
 
-**Fault plan schema** (per scenario, seeded; lives only in the Dict, never in the sandbox):
+**Fault plan schema** (per scenario; the episode seed is stored but unused; lives only in the Dict, never in the sandbox):
 
 ```json
 {"faults": [
   {"kind": "missing_file", "path": "config/settings.json", "mode": "sticky",    "hits": null},
   {"kind": "missing_file", "path": "README.md",            "mode": "transient", "hits": 1},
-  {"kind": "denied_write", "path": "src/limits.py",        "mode": "transient", "hits": 2},
+  {"kind": "denied_write", "path": "src/ratelimiter/limits.py", "mode": "transient", "hits": 2},
   {"kind": "ack_lost",     "path": "CHANGELOG.md",         "mode": "transient", "hits": 1, "delay_ms": 3000}
 ]}
 ```
@@ -142,7 +145,7 @@ How each fault is realised **at the tool boundary** (sandbox-env, outside the sh
 |---|---|---|---|---|
 | `missing_file` sticky | file deleted from fixture before agent starts | — | `ENOENT` from cat/read | agent recreates it from the spec in README/tests; hidden tests pass |
 | `missing_file` transient | nothing | first `hits` reads short-circuit with ENOENT (no exec) | flaky FS | agent retries/lists dir instead of giving up |
-| `denied_write` | nothing | first `hits` writes short-circuit with `EACCES: Permission denied`; **write not performed** | locked file | agent retries; final content correct; ≤1 wasted retry |
+| `denied_write` | nothing | first `hits` writes short-circuit with `EACCES: Permission denied`; **write not performed** | locked file | agent retries; final content correct; bounded retries (≤4 write attempts) |
 | `ack_lost` | nothing | **write IS performed**, then sleep `delay_ms`, then return `is_error` "504: response timed out; operation may or may not have completed" | ambiguous timeout | agent **verifies** (read/cat/grep/sha) before retrying; **no duplicate append**; tests pass |
 
 **Score** = 60 · tests_pass + 40 · recovery (checks weighted per check; weights live in each scenario JSON, see `GRADING.md`), reported with a
@@ -151,8 +154,7 @@ per-check breakdown. Step budget `max_steps` (default 20) → `truncated` if exc
 ### 2.3 Harness loop (agent-harness/run_episode)
 
 - SDK: `anthropic` (Python). Client: `anthropic.Anthropic()` (reads `ANTHROPIC_API_KEY` from the secret).
-- Model: `ANTHROPIC_MODEL` env (default `claude-haiku-4-5`), per-run override from an allowlist
-  (`claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-5`). Thinking: adaptive on models that support it; Haiku 4.5 = off.
+- Model: **Haiku only** (user decision 21:30 EDT): `MODEL_ALLOWLIST = ["claude-haiku-4-5"]`; any other `model` on `POST /runs` / `POST /conversations/{id}/runs` → 400 `model must be claude-haiku-4-5`; `run_episode` never sends another model; `/health.model_default` = `claude-haiku-4-5`. No thinking param. (Enforcement in the harness lands right after Review2.)
 - Tools: discovered from MCP `list_tools` and converted to Anthropic tool defs (+ a local `submit` tool
   that ends the episode with a summary). Parallel tool calls executed in order, all results returned in one user message.
 - Loop: manual `while stop_reason == "tool_use"` (no beta dependency), `max_steps`, per-call timeouts,
@@ -402,17 +404,16 @@ then add to the existing `@theme inline` block:
   --color-line-strong: var(--input);
   --color-brand: var(--primary);
   --color-brand-ink: var(--primary-foreground);
-  --color-brand-tint: color-mix(in oklch, var(--primary) 12%, transparent);
 ```
 Keep the MIT notice in `src/components/bui/LICENSE`.
 
 #### 2.10.3 Layout & state
-- Three columns ≥ 1280 px: rail 280 px · transcript (max-w 48rem, centred) · workspace 420 px
-  (a Sheet on narrower screens).
+- As built: sidebar rail (collapsible to icons) · transcript (max-w 48rem, centred) · workspace in resizable
+  panels ≥ 1280 px (split remembered in `faultline.run-layout`), a Sheet on narrower screens.
 - Transcript = ChatGPT/claude.ai shape: user bubble (task prompt) → assistant turn = StreamingText
   prose + ThinkingState trace whose steps are ToolChips (expand → CodeBlock stdout/stderr, exit code,
-  duration, `fault` badge from `tool.result.fault`, `recovered` badge when the next call on the same
-  path succeeds) → final summary + TaskRows score card. Header chips: status, step `n/max`, tokens, elapsed.
+  duration, `fault` badge from `tool.result.fault`, a "read-back seen" hint — a heuristic, not the
+  grader's verdict) → final summary + TaskRows score card. Header chips: status, step `n/max`, tokens, elapsed.
 - Path routes with no router dependency (`src/lib/router.ts`): `/`, `/conversations/:id[?run=]`, `/runs/:id`, `/replay/:demoId`.
 - Keep the existing reducer (`src/lib/reducer.ts`) as the single view model for live SSE, `GET /runs/{id}`
   restore and replay; persisted transcripts (`GET /conversations/{id}` → messages/blocks) are mapped to
@@ -446,7 +447,7 @@ truthful per-injector semantics in `services/sandbox-env/FAULTS.md`.
 - Checklist: [ ] sandbox-env provenance + `ESANDBOX` + staged `faults_fired` + interruptions route +
   scenario passthrough + safe `reap` · [ ] harness classification + statuses + resume + `worker_crash`
   / `transport_abort` · [ ] live proofs (`scripts/prove_interruptions.py` — not written yet; worker-crash + lost-ack +
-  real sandbox loss) · [ ] verify skill: `features/interruptions.md` + stage · [ ] web labels (other session).
+  real sandbox loss) · [ ] verify skill: `features/interruptions.md` — recipe present (a separate documented step around `scripts/prove_interruptions.py`, deliberately not a `verify_backend.py` stage); re-verification after the lead's Review2 changes pending · [ ] web labels (other session).
 
 ---
 
@@ -475,8 +476,8 @@ contracts, deploys, evidence, docs.
 ### 3.1 services/sandbox-env (agent A) — **milestone 1: one real shell/MCP round trip on Modal**
 - [x] `scenarios/*.json` (as built): 3 scenarios + `gauntlet` + `worker-crash` (§2.6) + fixture repo `fixtures/ratelimiter/` (src, tests, README, CHANGELOG, config) and **hidden** grader tests kept outside the fixture dir.
 - [x] `episodes.py`: reset (create Sandbox, upload fixture as tar, delete sticky-missing files, snapshot baseline shas), observe (walk + diff), delete.
-- [x] `faults.py`: pure fault engine — `decide(plan, ledger, tool, args) -> FaultDecision(kind, short_circuit_result | post_exec_transform)`; argv token matching for `run_command`; hit counting; deterministic (the episode `seed` is stored but not used — plans have no random parts).
-- [x] `mcp_tools.py`: FastMCP tools `run_command/read_file/write_file/list_dir`, episode from `X-Faultline-Episode` header via middleware+contextvar, truncation, ledger append.
+- [x] `faults.py`: pure fault engine — `decide(plan, hits_remaining, tool, args) -> Decision` (short-circuit result or post-exec transform); argv token matching for `run_command`; hit counting; deterministic (the episode `seed` is stored but not used — plans have no random parts).
+- [x] `mcp_tools.py`: FastMCP tools `run_command/read_file/write_file/list_dir`, episode from the `X-Faultline-Episode` header (`fastmcp` `get_http_headers()`), truncation, ledger append.
 - [x] `grader.py`: upload hidden tests → `pytest -q` in sandbox → parse → remove tests; recovery checks from ledger; score.
 - [x] `api.py`: FastAPI routes in §2.2, MCP mounted at `/mcp`, CORS `*` (GET/POST), request-id middleware, unified logging.
 - [x] `modal_app.py`: image (python 3.11, deps), sandbox image (python 3.11 + pytest), `@modal.asgi_app`, Dict `faultline-episodes`.
@@ -506,48 +507,54 @@ tests for `api`, `config`, `reducer` (agent C is renaming components as this is 
 so read file names in this section as roles, not fixed paths); `useRunStream` (seed from `GET /runs/{id}`, SSE with
 `Last-Event-ID`, polling fallback after two failed opens); `public/demo/lost-ack.json`; `/config.json`
 precedence (window → config.json → `VITE_HARNESS_URL` → default); `.gitignore` covers `node_modules`/`dist`.
-- [x] **Node**: Vite 8 requires `^20.19 || >=22.12` and vitest 5 `^22.12 || ^24`; the shell default 21.6 crashes both at startup (`styleText` missing from `node:util`). `.nvmrc` → `22` added (22.21.1 is installed). Still to do: `"engines": {"node": ">=22.12"}` in `package.json`; Node 22 in the Modal web image (§2.4).
+- [x] **Node**: Vite 8 requires `^20.19 || >=22.12` and vitest 5 `^22.12 || ^24`; the shell default 21.6 crashes both at startup (`styleText` missing from `node:util`). `.nvmrc` → `22` added (22.21.1 is installed). `"engines": {"node": ">=22.12"}` added in the web cleanup; Node 22 in the Modal web image for the in-image build path (§2.4).
 - [x] ~~**Snapshot under Node 22 at 17:43 EDT**~~ (historical; superseded — tsc clean and 184 tests at 19:26 EDT): `vite build` clean (474 kB JS / 62 kB CSS), `vitest run` 39/39 green (`api`, `config`, `reducer`); `tsc -p tsconfig.app.json --noEmit` = 7 errors from in-flight edits (`Pills` lacks `KindBadge`/`FaultBadge` exports, `@/lib/demo` unresolved, `RunView` missing `live` prop, two implicit `any`). `pnpm build` runs `tsc -b` first, so it fails until agent C clears these.
 - [x] Missing → done 22:25 UTC: `apps/web/modal_app.py` + `serve.py` (404s never cached), `src/lib/identity.ts` + `X-Faultline-User` on every request, conversation rail + `/conversations/:id` page, Beautiful UI ports in `src/components/bui/`, `llm.call` / `turn.thinking` in `types.ts` and `EVENT_TYPES`.
 - [x] Cosmetic: title is `Faultline`; `README.md` describes the app.
-- [x] Pivot done: shadcn sidebar block (`collapsible="icon"`) with conversations grouped by day, replays and the identity menu; path routes `/`, `/conversations/:id[?run=]`, `/runs/:id`, `/replay/:demoId` (legacy `?run=`/`?demo=` still parse); transcript = task bubble → per-step AssistantText + ThinkingTrace + ToolCallChips → ScoreRows; workspace column (Files / Diffs / Timeline / Logs) as a side column ≥1280 px, a sheet below.
+- [x] Pivot done: shadcn sidebar block (`collapsible="icon"`) with conversations grouped by day, replays and the identity menu; path routes `/`, `/conversations/:id[?run=]`, `/runs/:id`, `/replay/:demoId` (the legacy `?run=`/`?demo=`/`?c=` forms were removed in the cleanup); transcript = task bubble → per-step AssistantText + ThinkingTrace + ToolCallChips → ScoreRows; workspace column (Files / Diffs / Logs; the Timeline tab was removed in the cleanup) as a side column ≥1280 px, a sheet below.
 
 #### 3.3.1 Build
 - [x] Identity: `src/lib/identity.ts` (§2.9.1) — minted once, localStorage + cookie mirror, sent as `X-Faultline-User` by `HarnessClient`.
 - [x] Conversations: rail lists `GET /conversations`; opening one loads `GET /conversations/{id}` (messages/blocks → view model) and tails the live run if any; PromptBar *Run* → `POST /conversations/{id}/runs` → navigate to `/conversations/:id?run=…`.
-- [x] Layout per §2.10.3: rail (SidebarNav) · transcript (StreamingText, ThinkingState trace, ToolChips + CodeBlock outputs, fault/recovered badges → TaskRows score card) · composer (PromptBar: scenario `/` command, model picker, seed, Run) · workspace panel (as built: tabs Files / Diffs / Timeline / Logs — no ledger tab). Header shows run status, step counter, tokens, elapsed.
+- [x] Layout per §2.10.3: rail (SidebarNav) · transcript (StreamingText, ThinkingState trace, ToolChips + CodeBlock outputs, fault/recovered badges → TaskRows score card) · composer (PromptBar: scenario `/` command, model picker, seed, Run) · workspace panel (as built: tabs Files / Diffs / Logs — no ledger or timeline tab). Header shows run status, step counter, tokens, elapsed.
 - [x] Beautiful UI: copy the §2.10.1 components into `src/components/bui/`, apply the dep swaps and the `accent→brand` rename (§2.10.2), add `src/components/bui/LICENSE` (MIT, © 2026 Shane Levine).
-- [x] `modal_app.py`: Server per §2.4 (Node 22 in the image; `pnpm i --frozen-lockfile && pnpm build`; `config.json` written from `HARNESS_URL` at container start).
+- [x] `modal_app.py`: Server per §2.4 (serves a prebuilt `dist/` when present — the default; otherwise Node 22 + `pnpm i --frozen-lockfile && pnpm build` in the image; `serve.py` writes `config.json` from `HARNESS_URL` at container start, the only source of the URL).
 - [x] Config resolution, demo mode, unified logging: exist — keep.
 - [x] Under Node 22 `pnpm build` clean, `pnpm test` 146/146 (reducer, SSE resume incl. `done` reason window/finished, config, identity, router, transcript parity, 8 Beautiful UI component suites), `oxlint` clean; deployed URL replays the bundled demo and tails live runs.
 - [x] **Done** (23:10 UTC, Store live): a run started from the deployed UI created a conversation via `POST /conversations` + `POST /conversations/{id}/runs`, the rail lists it, `/conversations/:id` rendered the live SSE run, and on finish (and after a hard reload) the page renders the persisted messages/blocks projection from `GET /conversations/{id}` (top-bar chip `sqlite`). Evidence `runs/20260912T225240Z_web/conversation_*.json`.
 
 #### 3.3.2 Reliability UI and polish (user requests 2026-09-12; times in this section are UTC)
 - [x] Event contract confirmed with the harness lead 22:45 UTC (`ARCHITECTURE.md` §5.4): `error_class` (origin/layer/code/label/outcome_known/side_effect_applied), `outcome`, `attempts`, `sandbox.{id,alive}`, `fault.fired.{origin,layer,description}`, `episode.sandbox`, `interruption`, `run.resumed`, `run.finished.{evaluation_status,error_class}`, statuses `unevaluated`/`interrupted`, public scenario `checks`/`faults_public`/`harness_faults`. Backend implementation in progress (lead); no service emits it as of 23:25 UTC (19:25 EDT).
-- [ ] Re-verify in the browser once the taxonomy backend is live: r_ccda8780cbee must read "real: sandbox terminated or unavailable · status interrupted"; run the new `worker-crash` scenario and check `interruption` + `run.resumed` render (workers 2, planned real failure).
+- [ ] Re-verify in the browser once the taxonomy backend is live: r_ccda8780cbee must read "real: sandbox terminated or unavailable · status interrupted"; run the new `worker-crash` scenario and check `interruption` + `run.resumed` render (workers 2, planned real failure). Status 20:55 EDT: the backend emits them and the reducer folds `interruption` / `run.resumed` / `episode.sandbox` / worker generation, but no component renders them yet (with anthropic-4c).
 - [x] Workspace panel = shadcn **Resizable** panels (`react-resizable-panels` 4.x): draggable handle, collapsible to zero, split remembered in localStorage (`faultline.run-layout`), top-bar toggle kept in sync with the imperative panel; overlay sheet below 1280 px (`src/components/workspace/RunLayout.tsx`).
 - [x] Logs tab = virtualized rows (`@tanstack/react-virtual`, measured rows because lines wrap, tail-follow while live with a *follow* toggle) (`src/components/LogsPanel.tsx`).
 - [x] Landing page (user requests ~23:10 and ~23:20 UTC): ChatGPT-shaped — five bullets on what the app is, a centered composer (max-w 4xl), then a wide shadcn **data table** of scenarios (TanStack Table v9 + shadcn Table, `src/components/ScenarioTable.tsx`, fixed layout) with separate columns for title, description, max turns, failure badges, *Live run* and *Replay*; the harness health card is gone (reachability lives in the composer hint and the identity menu). `HealthBanner`/`ScenarioGrid` deleted.
+- [x] Language pass (2026-09-13, proposal + rationale in `docs/web-language-pass.md`): the landing now opens with a one-line kicker naming the take-home theme (Theme 3, Systems & Reliability, with a Theme 4 twist), the README tagline as headline, a one-paragraph intro, a "What goes wrong" list (four failures in plain words) beside a "Try it in 60 seconds" list (four steps); table headers are Scenario · What goes wrong · Step budget · Failure · Run · Replay; the Failure column renders one badge per `faults_public` row with its origin word (closes `docs/web-review-findings.md` §5); fault badges everywhere say "missing file" / "write denied" / "lost ack" / "worker crash" instead of identifiers; composer hints say "waking the harness…" / "live runs are offline · Replay still works" / "up to N steps · Enter to run"; sidebar says Recorded runs / This browser / harness online·offline. `e2e/flows.spec.ts` F1/F2 and the flow map updated in the same change. The catalogue `description` strings (`services/sandbox-env/sandbox_env/scenarios/*.json`) were shortened to "what goes wrong, then what a careful agent does" with no error codes; they reach the live site with the next sandbox-env deploy (accepted by its owner anthropic-75 on 2026-09-13; the shape "what goes wrong, then what a careful agent does" and no code/path/hit count in `task_prompt` are the rules for future scenarios). **Web redeployed 2026-09-13 ~01:19 UTC** (bundle `index-CJfNOdHq.js`, served hash == local; `vite build` direct because `tsc -b` fails on the other session's stale `api.test.ts`/`router.test.ts`); verify_web `runs/20260913T012106Z_verify_web/`: all 11 non-live flows PASS, 5 pre-existing doctor FAILs on the bundled replays' missing provenance fields + no worker-crash replay (new checks; `public/demo/*.json` unchanged). Deploy evidence `runs/20260913T011857Z_web_deploy/`.
 - [x] Theme switcher (user request, ~23:10 UTC by file times): light · dark · system icon radio group inside the user menu at the bottom-left of the sidebar (`src/components/layout/ThemeSwitcher.tsx`, store in `src/lib/theme.ts`: localStorage `faultline.theme`, `prefers-color-scheme` listener for system, pre-paint script in `index.html` so there is no flash; `?theme=` URL override persists a choice); `<html class="dark">` hard-coding removed; hard-coded `-300/-400` tone classes swept to `-700 dark:-300` style pairs across 14 components for light-mode contrast.
 - [x] Replay for every injected-fault scenario: live captures of `locked-file` (r_0c2184dd9727), `missing-config` (r_62416121aefd) and `gauntlet` (r_39c78b2b3a0b) — all score 100 with faults fired — exported with `scripts/export_demo.py` into `public/demo/` and registered in `DEMOS`; `demo.test.ts` checks every bundled replay (contiguous ids, graded, ≥1 fault, no secrets). `worker-crash` gets a replay once the lead produces a run.
+- [x] **Verdict strip removed** (user, 23:25 UTC: unreadable); replaced on the replay page by a top-bar **scrubber** (play/pause/restart + slider over Start · steps · Verdict; `src/hooks/useReplay.ts` folds the first N events so transcript, workspace and narration stay consistent while scrubbing) and a plain-English **story bar** (`src/lib/story.ts`, one checkpoint per step from structured fields only — tool/input, fault/error_class/outcome, exit codes, grader checks; agent prose quoted, never parsed; scrolls the transcript to the narrated step). `src/lib/story.test.ts` covers all four recordings and a "no classification ⇒ says unknown, never echoes error text" case.
+- [x] Modal wording and Modal API URLs removed from apps/web (23:47 UTC): copy says "isolated sandbox"; the harness URL is never baked (`DEFAULT_HARNESS_URL = ''`; runtime `/config.json` written by `serve.py` from `$HARNESS_URL`; dev via gitignored `.env.development.local`); identity menu and landing hint print no URL; bundled recordings lost `run.started.sandbox_env_url`; empty URL ⇒ "harness URL not configured" state. Theme switcher only in the user menu.
+- [x] Cleanup pass (00:14 UTC, review `runs/20260912T232850Z_cleanup-review/REVIEW.md` B18–B25 + C): persisted transcripts carry the run's evaluation/status and finished-but-ungraded runs show a "Not graded" callout; tool status from `outcome`/`error_class` (`src/lib/callStatus.ts`: unknown ≠ failed, not-executed distinct, red only for real); run status validated (`asRunStatus`); fault badges carry origin with taxonomy wording (`FaultFiredBadge`, `ErrorOriginBadge`); the reducer's read-back heuristic is labelled "read-back seen" until the grader's checks exist (`src/lib/runStatus.ts`: `ok` green only when the grade passed); "checking the harness…" while `/health` is cold; `/runs/:id` 404 ⇒ "Run not found (may belong to another browser identity)", no SSE tail; ThemeSwitcher moved out of the aria-hidden `DropdownMenuLabel` (a11y tree now exposes the radiogroup); dead code deleted (`reliability.*`, old playback path, `Timeline` tab, unused ui/format/log/codes exports, 404 fallbacks incl. the duplicate-conversation path, legacy `?run=/?demo=/?c=` routes, RunPage's second `getRun`, duplicate color-scheme meta, `--color-brand-tint`); `engines.node >= 22.12`. 21 files / 187 tests; tsc, build clean. Deployed v20 (bundle `index-Dsi0uqoN.js`); evidence `runs/20260912T233120Z_web/06_replay_cleanup_v20.png`, `07_run_not_found_v20.png`.
+- [x] Deploy discipline: after every `modal deploy`, confirm the served bundle hash equals `dist/` (a 23:31 UTC deploy failed silently and was only caught by the user); the e2e session (anthropic-ca, owner of `apps/web/e2e/**` + the verify skill's web flows) receives the hash and reruns its flows. Open for it: F9 (theme) rerun on v20; F10 may assert "Run not found".
 
 ### 3.4 Verify pass (3 agents, cross-review)
+- [x] Mapped the light/dark palettes from `~/try-redo/client/app/globals.css` onto the 31 existing color tokens per mode in `apps/web/src/index.css`. Source values match; local build and 4 theme tests passed; browser replay checked in both modes. Evidence: `runs/20260913T004817Z_theme_mapping/`. This palette change has not been deployed.
 - [ ] A reviews B against §2.2/§2.3 contracts; B reviews C; C reviews A. Each files concrete fixes (not opinions) and applies them.
-- [ ] Contract test validating live JSON from both services against `faultline_common.schemas` — not written. Partial today: `services/agent-harness/tools/check_contract.py` (harness), `scripts/web_check.py` (web-facing routes; its default web URL uses `.modal.run`, which 404s for Servers).
+- [ ] Contract test validating live JSON from both services against `faultline_common.schemas` — not written. Partial today: `services/agent-harness/tools/check_contract.py` (harness), `scripts/web_check.py` (web-facing routes).
 
 ---
 
 ## 4. Verification checklist (evidence → `runs/`)
 
-- [x] **V1 unit**: `pytest` green in both services (re-run 19:25 EDT: sandbox-env 225, harness 153); web `pnpm test` 184 green, `tsc` clean, oxlint 0 errors (19:26 EDT).
+- [x] **V1 unit**: `pytest` green in both services (re-run 20:50 EDT: sandbox-env 292, harness 209); web `vitest` 187/187 (21 files), `tsc` clean, oxlint 0 errors / 12 warnings (20:55 EDT). Counts move while the lead's review phase lands.
 - [x] **V2 round trip (milestone 1)**: `runs/20260912T220413Z_smoke/` (23/23) and `runs/20260912T221506Z_verify/outputs/careful_*` (real pytest stdout from the Modal Sandbox, observe diffs, evaluate, delete).
 - [x] **V3 faults**: `runs/20260912T220451Z_faults/` (builder) and `runs/20260912T221506Z_verify/files/{careful,careless,faults}/` (skill): ENOENT + hidden listing then restored, EACCES ×2 with sha unchanged then third write lands, ack_lost held 3.8 s with the file already changed; grader discriminates careful 100 vs careless 8 (two `## [0.2.0]` headings on disk).
 - [x] **V4 live episodes** (Haiku 4.5, no prompt tuning, `runs/20260912T221236Z_harness_integration/` + per-run dirs): `lost-ack` 100 (8 steps, 40 s) · `missing-config` 100 (11, 56 s) · `locked-file` 100 (12, 50 s) · `gauntlet` 100 (24, 106 s) · deliberately weak `lost-ack --max-steps 3` → `truncated`, 8/100 (18 s) — a failed recovery renders as a real low score, not a crash. `scripts/fault_proofs.py`: 8 scripted cases, 143 live assertions PASS (`runs/20260912T222340Z_faults/`). **Open**: `worker-crash` live run (§2.11) and a run that exercises `unevaluated`/`interrupted`.
-- [x] **V5 browser e2e** (partial, web owner, 22:25 UTC): deployed `https://appliedlabsai-local--faultline-web-site.us-east.modal.direct` → `/` → composer `/lost-ack` → live run `r_ccda8780cbee` streamed over SSE into the transcript (provisioning state, steps, tool chips, workspace table, counters); replay of the real capture shows `ack_lost` + read-back + single changelog entry + score 100. Evidence `runs/20260912T222525Z_web/` (headless-Chrome screenshots of the deployed site: home, good run r_e9bc5c8c6739, sandbox-died run, replay; run records; config.json). **Gap**: that live run's sandbox was reaped mid-run (real worker failure, see error taxonomy), so the live ack_lost path is evidenced by r_e9bc5c8c6739; re-run from the browser after the taxonomy lands. **Skill extended 2026-09-12 ~23:40 EDT**: `.claude/skills/verify-faultline/features/web-ui.md` (maintained flow map `web-landing` … `web-sidebar`), `helpers/verify_web.py` (HTTP doctor + Playwright flows in the installed Chrome, evidence `runs/<ts>_verify_web/`, parallel layout to the backend runner, browser-started `run_id` recorded in `verification.json`), `apps/web/e2e/flows.spec.ts` (one test per flow, `F1`…`F11`, `F3/F4` live behind `--live`). Maintenance rule: a flow change updates the map entry and its test in the same change.
+- [x] **V5 browser e2e** (partial, web owner, 22:25 UTC): deployed `https://appliedlabsai-local--faultline-web-site.us-east.modal.direct` → `/` → composer `/lost-ack` → live run `r_ccda8780cbee` streamed over SSE into the transcript (provisioning state, steps, tool chips, workspace table, counters); replay of the real capture shows `ack_lost` + read-back + single changelog entry + score 100. Evidence `runs/20260912T222525Z_web/` (headless-Chrome screenshots of the deployed site: home, good run r_e9bc5c8c6739, sandbox-died run, replay; run records; config.json). **Gap**: that live run's sandbox was reaped mid-run (real worker failure, see error taxonomy), so the live ack_lost path is evidenced by r_e9bc5c8c6739; re-run from the browser after the taxonomy lands. **Skill extended 2026-09-12 ~23:40 EDT**: `.claude/skills/verify-faultline/features/web-ui.md` (maintained flow map `web-landing` … `web-sidebar`), `helpers/verify_web.py` (HTTP doctor + Playwright flows in the installed Chrome, evidence `runs/<ts>_verify_web/`, parallel layout to the backend runner, browser-started `run_id` recorded in `verification.json`), `apps/web/e2e/flows.spec.ts` (one test per flow, `F1`…`F11`, `F3/F4` live behind `--live`). Maintenance rule: a flow change updates the map entry and its test in the same change. Runs: `runs/20260913T001550Z_verify_web/` PASS 36/36 including a browser-started live run `r_cad229163376`; `runs/20260913T004748Z_verify_web/` (web v22, bundle `index-BjWV3REr.js`) PASS 31 with the three live flows (F3/F4/F4b) skipped. Mid-run page refresh is not asserted (F4 reloads after the run finishes; V8 stays open).
 - [x] **V6 secret boundary**: both `/health` report `has_provider_key:false` (skill `doctor.*`); `runs/20260912T214353Z_harness_deploy/app_logs_has_key.txt` shows `has_key:true` only from `run_episode`; sandbox `env | grep -i anthropic` → none and outbound `curl` → BLOCKED (`runs/20260912T220451Z_faults/`).
 - [ ] **V7 logs**: harness + sandbox-env lines verified in the unified shape (`runs/20260912T215923Z_lost-ack_live/modal_logs_excerpt.txt`); **open**: web-server lines and a cross-service `run_id` join once the site is deployed.
 - [ ] **V8 reliability** (**open**): SSE reconnect past 150 s is unit-tested and the CLI reconnects on `done{reason:window}`, but no run has yet exceeded 110 s live; page-refresh restore needs the browser (V5).
-- [x] **V9 persistence** (web side, 23:10 UTC): run `lost-ack` from the browser → hard reload → conversation + full transcript restored from `GET /conversations/{id}` (17 messages / 31 blocks for run r_d3eeca2ccc6c); `/health.detail.store` reports `restored_from_snapshot: true` after the harness deploy. Still open (lead): `modal volume get faultline-db …` + `SELECT count(*) FROM events` cross-check.
+- [x] **V9 persistence** (web side, 23:10 UTC): run `lost-ack` from the browser → hard reload → conversation + full transcript restored from `GET /conversations/{id}` (17 messages / 31 blocks for run r_d3eeca2ccc6c); `/health.detail.store` reports `restored_from_snapshot: true` after the harness deploy. Volume cross-check done: `runs/20260912T230110Z_store/db/inspect.txt` (exported `faultline.sqlite3`: `integrity_check` ok, 30 runs / 1785 events).
 - [x] **V10 identity scoping** (23:10 UTC): `GET /conversations/{id}` with another user id → 404; the curl-created conversation of a test identity never appears in the browser's rail.
 
 ---
@@ -568,7 +575,7 @@ precedence (window → config.json → `VITE_HARNESS_URL` → default); `.gitign
 
 ## 6. Submission checklist
 
-- [ ] GitHub repo (public or shared) with clean history; `runs/` excluded; `.env` excluded. (19:25 EDT: no commits yet; `.gitignore` already covers `runs/` and `.env`.)
+- [x] GitHub repo: https://github.com/FrownyFace/anthropic (public; first commit `4ca4492` pushed 20:10 EDT by the web session at the user's request; `runs/`, `.env`, `.venv`, `node_modules`, `dist` and the assignment PDF ignored; key scan clean). Later commits go on top of `main`. (19:25 EDT: no commits yet; `.gitignore` already covers `runs/` and `.env`.)
 - [ ] `README.md`: what it is, architecture diagram, URLs, how to run locally/deploy, scenario list, how grading works, limits. `ARCHITECTURE.md` kept in sync (persistence, identity, UI).
 - [ ] `RATIONALE.md` (short): why Theme 3/4 + this approach; what's non-obvious (fault boundary outside the shell, ack-lost + append = detectable idempotency failure, gym framing, secret boundary); key decisions & tradeoffs (Modal 150 s → spawn+SSE; stateless MCP + Dict; Haiku default for cost/latency; interception vs. real chmod); extensions; **time spent**.
 - [ ] Video (~5 min): 30 s problem → 1 min architecture → 2.5 min live `lost-ack` run + replay → 1 min tradeoffs/extensions.
@@ -580,7 +587,7 @@ precedence (window → config.json → `VITE_HARNESS_URL` → default); `.gitign
 ## 7. Scope cuts (drop in this order if time runs out)
 
 1. `gauntlet` scenario → keep 3 single-fault scenarios.
-2. Per-run model override → env default only.
+2. ~~Per-run model override~~ → done by decision: Haiku only (21:30 EDT).
 3. Live unified diffs → file status list only (added/modified/deleted).
 4. Beautiful UI composites → plain shadcn (Card/Collapsible/Table) driven by the same reducer; resizable workspace → fixed column; virtualized logs → capped list.
 5. `messages`/`blocks`/`llm_calls` projection → store `events` only; the web reducer builds the transcript.
@@ -624,8 +631,9 @@ several sessions ran in parallel, so rows overlap and must not be summed naively
 | Build (swarm) | 17:30 | 18:10 | 0.7 | 3 Opus agents: sandbox-env (199 tests, smoke + fault proofs on Modal) / harness (98 tests, first live episode 100/100) / web (handed off to the other session at 17:45) |
 | Integrate (swarm) | 18:10 | 18:40 | 0.5 | `scripts/fault_proofs.py` (143 live assertions), 6 live episodes incl. gauntlet + weak run, read-only web contract check (22/22) |
 | Verification skill | 18:12 | 18:20 | 0.15 | `.claude/skills/verify-faultline` written + executed (65/65) |
-| Provenance + interruptions (lead + swarm) | 18:25 | | | taxonomy in schemas/docs/FAULTS.md, `worker-crash` scenario; Extend → Interrupt → Prove → Review running |
+| Provenance + interruptions (lead + swarm) | 18:25 | 21:05 | 2.7 | taxonomy in schemas/docs/FAULTS.md, `worker-crash` scenario; Extend (Store) → Interrupt (impl) → Prove (65/65 ×2, worker-crash `r_2991dd9a680a`/`r_1b83648dc693` resumed on worker 2) → Review (harness 9/11 fixed, sandbox-env 7/12 fixed, web 12 findings → `docs/web-review-findings.md`) |
+| Review2 (swarm) | 21:10 | 21:35 (stopped, unfinished) | 0.4 | anthropic-10's second review: control-token scoping (N1), reap fail-closed (N2), ledger race (N3), no delete on WorkspaceError (N4), stale-run finalisation (N5), submitted resume (N6), landing barrier (N7), confcutdir (N8), Store B6–B9, backfill, consistency, dead code |
 | Cleanup review + doc drift (session anthropic-10) | 19:15 | 19:50 | 0.6 | read-only review of repo vs PLAN/ARCHITECTURE/CLAUDE.md (3 reviewer agents, `runs/20260912T232850Z_cleanup-review/REVIEW.md`); markdown drift fixed in PLAN, ARCHITECTURE, README, `.env.example`, docs, web READMEs; verdict strip removed from the plan (user); fixes + dead code routed to owners (lead: services, error classification, worker-crash, Store; anthropic-4c: `apps/web/src`; anthropic-ca: e2e + verify skill) |
 | Deploy + verify | | | | |
 | Docs + video | | | | |
-| **Total** | | | | |
+| **Total (this session, lead + swarm)** | 17:05 | 21:38 | **≈4.5 h** | other sessions (web UI, e2e skill, docs review, language pass) ran in parallel and are logged by their owners; the assignment's 8 h cap is per candidate wall-clock, so sum the parallel sessions honestly in the written rationale |

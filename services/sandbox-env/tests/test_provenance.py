@@ -261,6 +261,27 @@ async def test_a_dead_sandbox_at_open_time_is_also_esandbox(live_server, fake_ws
     assert rows(ep.episode_id)[-1]["error_code"] == "ESANDBOX"
 
 
+async def test_a_deleted_episode_answers_esandbox_not_einval(live_server, fake_ws):
+    """DELETE /episodes/{id} terminated the sandbox: later calls are a real sandbox loss.
+
+    This is the safe, no-`reap` way to reproduce what killed run r_ccda8780cbee, and
+    scripts/prove_interruptions.py uses it. Answering EINVAL ("bad argument") told the harness the
+    agent had malformed the call, so the run kept stepping and ended `ok`; ESANDBOX is what makes
+    it end `interrupted` with error_class real/sandbox (docs/error-taxonomy.md).
+    """
+    ep = episodes.reset("lost-ack")
+    httpx.delete(f"{live_server}/episodes/{ep.episode_id}", timeout=10).raise_for_status()
+
+    async with client(live_server, ep.episode_id) as c:
+        res = await c.call_tool("write_file", {"path": CHANGELOG, "content": "x", "mode": "append"},
+                                raise_on_error=False)
+
+    body = payload(res)
+    assert body["code"] == "ESANDBOX", "a terminated episode is a dead sandbox, not a bad argument"
+    assert body["error"] == "write_file: sandbox unavailable"
+    assert ep.episode_id in (body.get("detail") or "")
+
+
 def test_observe_answers_503_with_the_esandbox_code(live_server, fake_ws, dead_ws):
     ep = episodes.reset("lost-ack")
     r = httpx.get(f"{live_server}/episodes/{ep.episode_id}", timeout=10)

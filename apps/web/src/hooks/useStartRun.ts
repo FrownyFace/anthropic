@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 
 import type { ConversationsState } from '@/hooks/useConversations'
 import type { HarnessState } from '@/hooks/useHarness'
+import { HarnessError } from '@/lib/api'
 import { getLogger } from '@/lib/log'
 import { navigate } from '@/lib/router'
 
@@ -57,7 +58,8 @@ export function useStartRun(harness: HarnessState, conversations: ConversationsS
         conversations.refresh()
         return r.run_id
       } catch (err) {
-        setError(String(err))
+        // The harness's own sentence (e.g. a 400 for a model it does not allow) is shown unchanged.
+        setError(err instanceof HarnessError ? err.message : String(err))
         log.error('run.start_failed', 'could not start the run', {
           scenario_id: p.scenarioId,
           error: String(err),

@@ -51,21 +51,21 @@ except Exception:  # pragma: no cover - fallback when the shared package is abse
     log = _Fallback()
 
 REQUIRED_RECORD_FIELDS = ("run_id", "status", "scenario_id", "model", "created_at", "events")
-EVENT_TYPES = {
-    "run.started",
-    "episode.reset",
-    "turn.text",
-    "tool.call",
-    "tool.result",
-    "fault.fired",
-    "workspace.diff",
-    "episode.evaluated",
-    "run.finished",
-    "log",
-    # added once the harness started emitting them (faultline_common.schemas.EventType)
-    "llm.call",
-    "turn.thinking",
-}
+# Derived from the shared contract so a replay can never be rejected for an event type the harness
+# really emits (interruption, run.resumed, episode.sandbox, ...). Falls back to the known list when the
+# package is not importable (running from a bare checkout).
+try:  # pragma: no cover - import guard
+    from typing import get_args as _get_args
+
+    from faultline_common.schemas import EventType as _EventType
+
+    EVENT_TYPES = set(_get_args(_EventType))
+except Exception:  # noqa: BLE001
+    EVENT_TYPES = {
+        "run.started", "episode.reset", "turn.text", "tool.call", "tool.result", "fault.fired",
+        "workspace.diff", "episode.evaluated", "run.finished", "log", "llm.call", "turn.thinking",
+        "interruption", "run.resumed", "episode.sandbox",
+    }
 
 
 class ExportError(RuntimeError):
@@ -144,11 +144,8 @@ def sanitise(rec: dict[str, Any]) -> dict[str, Any]:
         data = ev.get("data")
         if isinstance(data, dict):
             mask(data)
-    # sandbox ids are ops detail, not part of the story
-    for ev in out.get("events", []):
-        data = ev.get("data")
-        if isinstance(data, dict) and "sandbox_id" in data:
-            data.pop("sandbox_id", None)
+    # sandbox ids stay: the UI's sandbox chip (episode/sandbox id · worker n · survived/lost) and the
+    # episode.sandbox story read them. They are short ids of already-terminated sandboxes, not secrets.
     if masked:
         log.info("demo.sanitised", "masked account fields", fields=masked)
     return out

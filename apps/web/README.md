@@ -23,7 +23,7 @@ the plan.
 ```bash
 source ~/.nvm/nvm.sh && nvm use        # Node 22 from .nvmrc
 corepack pnpm install --frozen-lockfile
-pnpm dev                               # http://localhost:5173, harness URL from public/config.json
+pnpm dev                               # http://localhost:5173; set VITE_HARNESS_URL in .env.development.local (public/config.json ships empty)
 pnpm test                              # vitest run
 pnpm build                             # tsc -b && vite build → dist/
 ```
@@ -53,7 +53,7 @@ pnpm build                             # tsc -b && vite build → dist/
   `Last-Event-ID`, ~110 s rotations, polling fallback). `src/lib/reducer.ts` folds events into the
   view state; `src/lib/transcript.ts` maps either source onto one transcript model.
 - **Config** — harness URL precedence: `window.__FAULTLINE_CONFIG__` → `/config.json` (written by
-  `serve.py` from `$HARNESS_URL` at container start) → `VITE_HARNESS_URL` → built-in default.
+  `serve.py` from `$HARNESS_URL` at container start) → `VITE_HARNESS_URL` → empty ("harness URL not configured"; replays still work).
 
 ## Layout
 

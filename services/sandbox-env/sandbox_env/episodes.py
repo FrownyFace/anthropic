@@ -43,6 +43,13 @@ log = get_logger("sandbox-env")
 
 EPISODES_DICT = os.environ.get("FAULTLINE_EPISODES_DICT", "faultline-episodes")
 DIFF_CAP = 6_000
+#: …and a cap on how MANY files get a diff. DIFF_CAP bounds one diff; nothing bounded the count,
+#: and the agent controls it (`for i in $(seq 500); do echo x > f$i; done`). Two things break at
+#: that point: the observe response the harness puts into an event and streams to the browser grows
+#: without limit, and the helper is invoked with the whole path list in ONE argv token, which Linux
+#: caps at 128 KiB — so a big enough change set turns observe into an ESANDBOX. The `files` list
+#: still reports every change; only the unified diffs are capped.
+DIFF_FILES_CAP = int(os.environ.get("EPISODE_DIFF_FILES_CAP", "50"))
 
 #: Cost guardrail. An episode whose owner crashed (harness killed, browser closed, script ^C'd)
 #: leaves a running Modal Sandbox behind. Three independent things reclaim it, in increasing order
@@ -55,6 +62,12 @@ EPISODE_TTL_S = int(os.environ.get("EPISODE_TTL_S", "1800"))
 EPISODE_PURGE_S = int(os.environ.get("EPISODE_PURGE_S", "86400"))
 #: never let a sweep turn into an unbounded scan of the Dict on the reset path
 EPISODE_SWEEP_MAX = int(os.environ.get("EPISODE_SWEEP_MAX", "200"))
+#: …and never let one sweep turn into an unbounded number of Modal round trips either. The scan is
+#: one `items()` call, but every expiry costs a terminate + a Dict write (~0.3 s) and every purge a
+#: pop. A backlog of 200 expired episodes would therefore add a minute or more to the `POST
+#: /episodes` that triggered it — and reset is a web request, hard-capped at 150 s by Modal
+#: (PLAN.md §2.3). The sweep is idempotent, so a budget just means the next one finishes the job.
+EPISODE_SWEEP_MAX_ACTIONS = int(os.environ.get("EPISODE_SWEEP_MAX_ACTIONS", "25"))
 #: how often a container may sweep from the reset path (see `sweep_quietly`)
 EPISODE_SWEEP_INTERVAL_S = int(os.environ.get("EPISODE_SWEEP_INTERVAL_S", "300"))
 
@@ -290,7 +303,8 @@ def observe(episode_id: str, ws: Workspace | None = None) -> ObserveResponse:
         else:
             files.append(FileEntry(path=rel, size=int(meta.get("size", 0)), sha256=meta["sha256"], status="unchanged"))
 
-    diffs = [FileDiff(**d) for d in ws.diffs(changed, DIFF_CAP)] if changed else []
+    diffed = changed[:DIFF_FILES_CAP] if DIFF_FILES_CAP > 0 else changed
+    diffs = [FileDiff(**d) for d in ws.diffs(diffed, DIFF_CAP)] if diffed else []
     log.info(
         "episode.observe",
         "workspace observed",
@@ -298,6 +312,8 @@ def observe(episode_id: str, ws: Workspace | None = None) -> ObserveResponse:
         step=ep.get("step", 0),
         files=len(files),
         changed=len(changed),
+        diffed=len(diffs),
+        diffs_capped=True if len(diffed) < len(changed) else None,
         faults_fired=len(faults_fired(ep)),
     )
     return ObserveResponse(
@@ -565,11 +581,13 @@ def list_episodes(probe: bool = True, limit: int = EPISODE_SWEEP_MAX) -> dict[st
 
 
 def sweep(ttl_s: int | None = None, purge_s: int | None = None,
-          limit: int = EPISODE_SWEEP_MAX) -> dict[str, Any]:
+          limit: int = EPISODE_SWEEP_MAX,
+          max_actions: int = EPISODE_SWEEP_MAX_ACTIONS) -> dict[str, Any]:
     """Terminate episodes older than the TTL; drop long-dead records from the Dict.
 
     Deliberately cheap and idempotent: it is called on the reset path, so it must cost at most a
-    Dict scan plus one terminate per actually-expired episode, and it must never raise.
+    Dict scan plus `max_actions` terminates/purges, and it must never raise. `max_actions <= 0`
+    lifts the budget (the out-of-band `sweep` Modal function, which has its own 300 s timeout).
     """
     ttl = EPISODE_TTL_S if ttl_s is None else ttl_s
     purge = EPISODE_PURGE_S if purge_s is None else purge_s
@@ -578,8 +596,12 @@ def sweep(ttl_s: int | None = None, purge_s: int | None = None,
     purged: list[str] = []
     errors: list[str] = []
     scanned = 0
+    budget_left = True
 
     for eid, ep in iter_episodes(limit):
+        if max_actions > 0 and len(expired) + len(purged) >= max_actions:
+            budget_left = False
+            break
         try:
             scanned += 1
             age = age_s(ep, now)
@@ -598,9 +620,11 @@ def sweep(ttl_s: int | None = None, purge_s: int | None = None,
             f"expired {len(expired)}, purged {len(purged)}",
             scanned=scanned, ttl_s=ttl, purge_s=purge,
             expired=expired or None, purged=purged or None, errors=errors or None,
+            budget_exhausted=None if budget_left else True,
         )
     return {"scanned": scanned, "ttl_s": ttl, "purge_s": purge,
-            "expired": expired, "purged": purged, "errors": errors}
+            "expired": expired, "purged": purged, "errors": errors,
+            "budget_exhausted": not budget_left}
 
 
 #: wall-clock of this container's last sweep (monotonic). Per container on purpose: the sweep is
@@ -635,12 +659,20 @@ def sweep_quietly(force: bool = False) -> dict[str, Any]:
         return {"scanned": 0, "expired": [], "purged": [], "errors": [str(exc)]}
 
 
-def active_sandboxes(ttl_s: int | None = None, limit: int = EPISODE_SWEEP_MAX) -> dict[str, dict[str, Any]]:
+def active_sandboxes(ttl_s: int | None = None, limit: int = 0) -> dict[str, dict[str, Any]]:
     """`{sandbox_id: {episode_id, scenario_id, age_s, step}}` for episodes still in use.
 
     "In use" == not terminated, not done, and younger than the TTL. This is the set `reap` must not
     touch: killing one of these is exactly what ended run `r_ccda8780cbee` at step 4 with a
     mislabelled EINTERNAL and a null score.
+
+    `limit=0` (scan everything) is deliberate and is NOT the sweep's bound. modal.Dict hands out its
+    keys in its own order, so a bounded scan of a store that holds more records than the bound
+    silently omits arbitrary episodes — and an omitted episode is an *unprotected* one. The store
+    keeps terminated records for EPISODE_PURGE_S (24 h), so it passes 200 records in normal use:
+    with the old default of EPISODE_SWEEP_MAX this function would have started handing `reap` a
+    partial protection list, i.e. reintroduced exactly the incident it exists to prevent. The scan
+    is one `items()` round trip, and `reap` is an out-of-band function, not a hot path.
     """
     ttl = EPISODE_TTL_S if ttl_s is None else ttl_s
     now = datetime.now(timezone.utc).timestamp()
@@ -661,13 +693,13 @@ def active_sandboxes(ttl_s: int | None = None, limit: int = EPISODE_SWEEP_MAX) -
     return out
 
 
-def active_sandbox_ids(ttl_s: int | None = None, limit: int = EPISODE_SWEEP_MAX) -> set[str]:
+def active_sandbox_ids(ttl_s: int | None = None, limit: int = 0) -> set[str]:
     """Sandbox ids belonging to episodes that are still in use (see `active_sandboxes`)."""
     return set(active_sandboxes(ttl_s=ttl_s, limit=limit))
 
 
 def mark_terminated(sandbox_ids: set[str], reason: str = "reaped",
-                    limit: int = EPISODE_SWEEP_MAX) -> list[str]:
+                    limit: int = 0) -> list[str]:
     """Record that these sandboxes are gone, so `GET /episodes` stops claiming they are alive."""
     touched: list[str] = []
     if not sandbox_ids:

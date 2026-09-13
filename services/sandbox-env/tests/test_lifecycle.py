@@ -320,3 +320,83 @@ def test_mark_terminated_ignores_unknown_sandboxes(fake_ws) -> None:
     ep = episodes.reset("missing-config")
     assert episodes.mark_terminated({"sb-someone-elses"}) == []
     assert episodes.load(ep.episode_id).get("terminated") is not True
+
+
+# --------------------------------------------------------------------------- scan bounds
+# `reap` decides what to spare from `active_sandboxes()`. A *bounded* scan of an unbounded store is
+# a protection list with holes in it, and modal.Dict hands out keys in its own order, so which
+# episodes fall in the hole is arbitrary. The store keeps terminated records for EPISODE_PURGE_S
+# (24 h), so it passes any small bound in normal use.
+
+
+def _fill_store(mem_store, n: int) -> None:
+    for i in range(n):
+        eid = f"ep_filler{i:04d}"
+        mem_store.put(eid, {
+            "episode_id": eid, "scenario_id": "lost-ack", "sandbox_id": f"sb-filler{i:04d}",
+            "created_at": iso_ago(episodes.EPISODE_TTL_S + 3600), "step": 0,
+            "terminated": True, "done": True,
+        })
+
+
+def test_reap_protection_sees_every_live_episode_even_in_a_big_store(fake_ws, mem_store) -> None:
+    _fill_store(mem_store, episodes.EPISODE_SWEEP_MAX + 50)
+    live = episodes.reset("lost-ack")  # added last: a bounded scan never reaches it
+
+    assert len(mem_store.keys()) > episodes.EPISODE_SWEEP_MAX
+    active = episodes.active_sandboxes()
+    assert "sb-test" in active, "reap would have terminated a running episode's sandbox"
+    assert active["sb-test"]["episode_id"] == live.episode_id
+    assert episodes.active_sandbox_ids() == {"sb-test"}
+
+
+def test_mark_terminated_reaches_the_whole_store(fake_ws, mem_store) -> None:
+    ep = episodes.reset("lost-ack")
+    _fill_store(mem_store, episodes.EPISODE_SWEEP_MAX + 50)  # pushed behind the old bound
+    assert episodes.mark_terminated({"sb-test"}) == [ep.episode_id]
+
+
+def test_the_sweep_bounds_its_modal_round_trips(fake_ws, mem_store) -> None:
+    """A backlog must not be paid for inside one `POST /episodes` (Modal caps a request at 150 s)."""
+    for i in range(episodes.EPISODE_SWEEP_MAX_ACTIONS + 10):
+        eid = f"ep_stale{i:04d}"
+        mem_store.put(eid, {
+            "episode_id": eid, "scenario_id": "lost-ack", "sandbox_id": "sb-test",
+            "created_at": iso_ago(episodes.EPISODE_TTL_S + 60), "step": 0,
+        })
+
+    first = episodes.sweep()
+    assert len(first["expired"]) == episodes.EPISODE_SWEEP_MAX_ACTIONS
+    assert first["budget_exhausted"] is True
+
+    second = episodes.sweep()  # idempotent: the next sweep finishes the backlog
+    assert len(second["expired"]) == 10
+    assert second["budget_exhausted"] is False
+    assert episodes.sweep()["expired"] == []
+
+
+def test_the_out_of_band_sweep_has_no_budget(fake_ws, mem_store) -> None:
+    for i in range(episodes.EPISODE_SWEEP_MAX_ACTIONS + 5):
+        eid = f"ep_stale{i:04d}"
+        mem_store.put(eid, {
+            "episode_id": eid, "scenario_id": "lost-ack", "sandbox_id": "sb-test",
+            "created_at": iso_ago(episodes.EPISODE_TTL_S + 60), "step": 0,
+        })
+    res = episodes.sweep(max_actions=0)
+    assert len(res["expired"]) == episodes.EPISODE_SWEEP_MAX_ACTIONS + 5
+
+
+def test_the_public_sweep_route_cannot_shorten_the_ttl(live_server: str, fake_ws) -> None:
+    """`POST /episodes/sweep?ttl_s=1` used to terminate every live episode, from anywhere."""
+    api = httpx.Client(base_url=live_server, timeout=30)
+    ep = api.post("/episodes", json={"scenario_id": "lost-ack"}).json()
+
+    swept = api.post("/episodes/sweep", params={"ttl_s": 1}).json()
+    assert swept["ttl_s"] == episodes.EPISODE_TTL_S, "a caller may only lengthen the TTL"
+    assert swept["expired"] == []
+    assert fake_ws.terminated is False
+    assert api.get(f"/episodes/{ep['episode_id']}").status_code == 200
+
+    # lengthening it is still allowed (that is the only direction that cannot break a live run)
+    assert api.post("/episodes/sweep", params={"ttl_s": 99_999}).json()["ttl_s"] == 99_999
+    api.delete(f"/episodes/{ep['episode_id']}")

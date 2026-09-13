@@ -3,9 +3,12 @@
     modal deploy -e local apps/web/modal_app.py
     HARNESS_URL=https://…harness-api.modal.run modal deploy -e local apps/web/modal_app.py
 
-URL shape (workspace `appliedlabsai`, environment `local`, Server named `site`):
+Server URL (workspace `appliedlabsai`, environment `local`, Server named `site`):
 
-    https://appliedlabsai-local--faultline-web-site.modal.run
+    https://appliedlabsai-local--faultline-web-site.us-east.modal.direct
+
+Read it back with `modal.Server.from_name('faultline-web', 'site').get_url()` rather than guessing
+the shape.
 
 Two build paths, because the fast one is fast and the slow one is the one that works on a clean
 checkout:
@@ -22,10 +25,9 @@ checkout:
   built, so a `run_commands("pnpm build")` would see an empty /src. Both paths therefore use
   `copy=True`.
 
-The harness URL is **not** baked into the bundle. `/site/config.json` is written at container
-start from `$HARNESS_URL` (see `serve.py`), and the SPA prefers it over the build-time
-`VITE_HARNESS_URL`. Redeploying the harness is then `modal deploy` with a different env var, not a
-frontend rebuild.
+The harness URL is **not** baked into the bundle — nothing may be. `/site/config.json`, written at
+container start from `$HARNESS_URL` (see `serve.py`), is the only source the SPA reads. Redeploying
+the harness is then `modal deploy` with a different env var, not a frontend rebuild.
 """
 
 from __future__ import annotations
@@ -93,8 +95,8 @@ _IGNORE = [
 
 _BASE = modal.Image.debian_slim(python_version="3.11").env(
     {
-        # Build-time fallback only; /site/config.json written at container start wins.
-        "VITE_HARNESS_URL": HARNESS_URL,
+        # No VITE_HARNESS_URL here: nothing is baked into the bundle; /site/config.json written
+        # at container start is the only source of the harness URL.
         "HARNESS_URL": HARNESS_URL,
         "SITE_ROOT": SITE_ROOT,
         "PORT": str(PORT),
@@ -197,5 +199,5 @@ def info() -> None:
     print(
         f"app={APP_NAME} server={SERVER_NAME} prebuilt={PREBUILT}\n"
         f"harness_url={HARNESS_URL}\n"
-        f"expected url=https://appliedlabsai-local--{APP_NAME}-{SERVER_NAME}.modal.run"
+        f"site url: modal.Server.from_name({APP_NAME!r}, {SERVER_NAME!r}).get_url()"
     )

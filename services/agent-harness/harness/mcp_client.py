@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from faultline_common.log import get_logger, truncate
@@ -66,18 +66,6 @@ class ToolCallResult:
     transport_kind: str | None = None
     #: how many times the harness dispatched this call (1 = no retry)
     attempts: int = 1
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "text": self.text,
-            "is_error": self.is_error,
-            "duration_ms": self.duration_ms,
-            "structured": self.structured,
-            "error_code": self.error_code,
-            "transport_error": self.transport_error,
-            "transport_kind": self.transport_kind,
-            "attempts": self.attempts,
-        }
 
 
 # --------------------------------------------------------------------------- pure helpers

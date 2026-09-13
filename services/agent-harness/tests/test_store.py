@@ -375,6 +375,51 @@ def test_checkpoint_is_a_no_op_without_a_snapshot_path() -> None:
     assert store.checkpoint(force=True)["ok"] is True
 
 
+def test_a_second_container_that_wrote_nothing_never_clobbers_the_snapshot(tmp_path) -> None:
+    """`modal run` starts an ephemeral Store on the SAME Volume (min_containers=1).
+
+    It restores the snapshot, is given no work — every maintenance entrypoint talks to the
+    DEPLOYED Store by name — and then exits. If its exit hook forced a checkpoint it would VACUUM
+    that stale copy over the live snapshot and erase everything written meanwhile. That is real
+    data loss, not a race: it happened to be harmless when the provenance backfill ran only
+    because the ephemeral container booted AFTER the write.
+    """
+    snap = tmp_path / "vol" / "faultline.sqlite3"
+    live = SqliteStore(tmp_path / "live" / "db.sqlite3", snapshot_path=snap).open()
+    live.create_run(record(user_id=USER))
+    live.checkpoint(force=True)
+
+    stale = SqliteStore(tmp_path / "ephemeral" / "db.sqlite3", snapshot_path=snap).open()
+    assert stale.health()["restored_from_snapshot"] is True
+
+    # ...meanwhile the deployed container keeps working and publishes a second run.
+    live.create_run(record("r_2", user_id=USER))
+    live.checkpoint(force=True)
+    published = snap.read_bytes()
+
+    stale.checkpoint_on_exit()          # the exit hook of the container that did nothing
+    stale.close()
+    assert snap.read_bytes() == published, "a clean container must not rewrite the snapshot"
+
+    after = SqliteStore(tmp_path / "next" / "db.sqlite3", snapshot_path=snap).open()
+    assert {r["id"] for r in after.list_runs(10)} == {"r_1", "r_2"}, "the second run survived"
+    after.close()
+    live.close()
+
+
+def test_a_container_with_unsaved_writes_still_flushes_on_exit(tmp_path) -> None:
+    snap = tmp_path / "vol" / "faultline.sqlite3"
+    store = SqliteStore(tmp_path / "hot.sqlite3", snapshot_path=snap).open()
+    store.create_run(record(user_id=USER))          # dirty, never checkpointed
+    assert store.health()["dirty"] is True
+    assert store.checkpoint_on_exit()["dirty"] is False
+    store.close()
+
+    restored = SqliteStore(tmp_path / "b.sqlite3", snapshot_path=snap).open()
+    assert restored.get_run("r_1") is not None, "the exit hook must still save real work"
+    restored.close()
+
+
 # ----------------------------------------------------------------------------- identity
 
 

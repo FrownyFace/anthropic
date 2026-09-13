@@ -182,6 +182,19 @@ def normalize_fault(raw: dict[str, Any] | None, *, step: int | None = None) -> d
     return {**merged, **validated}
 
 
+def fault_outcome(fault: dict[str, Any] | None) -> str | None:
+    """`ToolOutcome` for a call a fault explains, or None when we have no profile for it.
+
+    Used for the shell surface of an injected fault: `run_command` short-circuited by
+    `missing_file`/`denied_write` comes back as a NORMAL result with `exit_code: 1` (FAULTS.md), so
+    `is_error` is False but nothing ran — the honest outcome is `not_executed`, not `failed`.
+    """
+    if not fault:
+        return None
+    profile = FAULT_PROFILE.get((str(fault.get("origin") or "injected"), str(fault.get("kind") or "")))
+    return str(profile["outcome"]) if profile else None
+
+
 def fault_error_class(fault: dict[str, Any], detail: str | None = None) -> tuple[str, dict[str, Any]]:
     """(outcome, ErrorClass) for a tool result explained by an injected/staged fault."""
     origin = str(fault.get("origin") or "injected")
@@ -232,7 +245,11 @@ def classify_result(
     if not is_error:
         exit_code = (payload or {}).get("exit_code")
         if isinstance(exit_code, int) and exit_code != 0:
-            return "failed", None
+            # A shell does not raise: an injected fault short-circuits `run_command` into a normal
+            # result with exit 1 (FAULTS.md), so the ledger delta — not `is_error` — is what says
+            # whether anything actually ran. `error_class` stays absent either way:
+            # docs/error-taxonomy.md puts it on `is_error` results only.
+            return fault_outcome(fault) or "failed", None
         return "executed", None
 
     # 1. our own worker was interrupted while the call was in flight (written by the resuming worker)
@@ -344,6 +361,8 @@ def ledger_side_effect(row: dict[str, Any]) -> bool | None:
     """Ground truth for one ledger row: did the write/command actually run?"""
     outcome = str(row.get("outcome") or "")
     if row.get("interrupted"):
-        # The harness never saw the response; the ledger knows whether the call completed.
-        return outcome == "ok"
+        # The harness never saw the response; the ledger knows whether the call completed. An
+        # `ack_lost` row that was ALSO interrupted still executed (FAULTS.md: ack_lost always
+        # applies the write), so it resolves the same way an `ok` row does.
+        return outcome in ("ok", "ack_lost")
     return LEDGER_SIDE_EFFECT.get(outcome)

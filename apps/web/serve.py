@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Static file server for the built Faultline SPA.
 
-`python -m http.server` is not enough here: it has no SPA fallback (a refresh on `/?run=…` is
-fine, but any future path route would 404), no cache-control, and its log format is not the
-unified JSON we use everywhere else. This is ~150 lines and does exactly what the deployment
-needs and nothing more.
+`python -m http.server` is not enough here: it has no SPA fallback (a refresh on a path route such
+as `/conversations/<id>` or `/replay/lost-ack` would 404), no cache-control, and its log format is
+not the unified JSON we use everywhere else. This is ~150 lines and does exactly what the
+deployment needs and nothing more.
 
 Behaviour:
   * serves `--root` (default /site)
