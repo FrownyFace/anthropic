@@ -37,9 +37,9 @@ here or in the helpers.
 - Directly: `POST /runs {scenario_id: "worker-crash"}` on the harness, then `GET /runs/{id}` and read
   `events[]` for `interruption`, `run.resumed`, `episode.sandbox`, and each `tool.result.data.outcome`
   / `error_class`. The script's runs are owned by identity `u_cli`; send `X-Faultline-User: u_cli` to
-  read them. *(The backend session has announced owner scoping for `GET /runs` and `/runs/{id}`
-  (404 on mismatch except legacy/null-owner runs) with Review2; on the deployment at 00:58Z both
-  still answer 200 without a header, so do not assert it yet.)*
+  read them. *(The backend session has announced owner scoping with Review2: `GET /runs` → 400 without the
+  header, `/runs/{id}` → 404 on owner mismatch except legacy/null-owner runs; on the deployment at
+  00:58Z both still answer 200 without a header, so do not assert it yet.)*
 
 ## Driving it (separate step)
 
@@ -111,7 +111,9 @@ Both worker-crash records were re-read from the deployed harness on 2026-09-13 0
   `CHANGELOG.md` is a read, so a blind re-append fails the case even if the grader later scores it.
 - `sandbox-loss` must never be "proved" with `reap`: reap kills every Faultline sandbox, including
   other sessions' live runs. The script's `DELETE` of its own episode is the only sanctioned way.
-- Pre-taxonomy records (Dict-era run ids other than the specimen) may 404; only `r_ccda8780cbee` is
-  guaranteed to be served.
+- 404s for real run ids in the minutes after a harness redeploy are the Store restoring (old and new
+  Store containers overlapping, or a restore from an older snapshot — B6, filed 2026-09-13 by the
+  backend session; the three "unknown" ids seen at 00:08Z all answered 200 by 01:02Z). Wait and re-read
+  before concluding a record is missing; never re-run the case to "recreate" it.
 - The browser flows (`web-ui.md`) do not assert these events; a green `verify_web.py` says nothing
   about interruptions.
