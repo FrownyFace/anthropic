@@ -11,6 +11,7 @@ whether the agent recovered. The environment is framed as a tiny RL gym
 
 > Take-home for Anthropic Platform SWE · Theme 3 (Systems & Reliability) with a Theme 4 (Evaluation) twist.
 > Live demo: **https://appliedlabsai-local--faultline-web-site.us-east.modal.direct** · Rationale: [RATIONALE.md](RATIONALE.md) · Plan/log: [PLAN.md](PLAN.md)
+> Video walkthrough: [Watch the demo and design rationale (6:39)](https://drive.google.com/file/d/1vZ4EWA-VQMLbPj-b91YczKytpCIxH1ZY/view?usp=sharing)
 
 ## Try it in 60 seconds
 
